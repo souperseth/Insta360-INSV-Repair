@@ -13,6 +13,8 @@ Usage:
   python3 insv_repair.py <broken_file.insv> [--reference <good_file.insv>]
   python3 insv_repair.py <broken_file.insv> --scan   (no reference file needed)
   python3 insv_repair.py <file.insv> --diagnose       (analyze only, no repair)
+  python3 insv_repair.py <broken_file.insv> --reference <good_file.insv> --diagnose
+                                                    (repair, then diagnose output)
 
 The tool can repair files in two modes:
   - Reference mode: Uses a known-good .insv file from the same camera/settings
@@ -25,7 +27,6 @@ import argparse
 import os
 import struct
 import sys
-import time
 from collections import namedtuple
 from typing import BinaryIO, Optional
 
@@ -33,55 +34,29 @@ from typing import BinaryIO, Optional
 # Constants
 # ---------------------------------------------------------------------------
 
-CONTAINER_ATOMS = {b'moov', b'trak', b'mdia', b'minf', b'stbl', b'dinf',
-                   b'edts', b'udta', b'mvex', b'sinf', b'schi'}
-
 # HEVC NAL unit types relevant for frame detection
 HEVC_NAL_VPS = 32
 HEVC_NAL_SPS = 33
 HEVC_NAL_PPS = 34
-HEVC_NAL_AUD = 35  # Access Unit Delimiter
-HEVC_NAL_IDR_W_RADL = 19
-HEVC_NAL_IDR_N_LP = 20
-HEVC_NAL_CRA = 21
-HEVC_NAL_TRAIL_N = 0
-HEVC_NAL_TRAIL_R = 1
-HEVC_NAL_TSA_N = 2
-HEVC_NAL_TSA_R = 3
-HEVC_NAL_STSA_N = 4
-HEVC_NAL_STSA_R = 5
-HEVC_NAL_RADL_N = 6
-HEVC_NAL_RADL_R = 7
-HEVC_NAL_RASL_N = 8
-HEVC_NAL_RASL_R = 9
-HEVC_NAL_BLA_W_LP = 16
-HEVC_NAL_BLA_W_RADL = 17
-HEVC_NAL_BLA_N_LP = 18
-HEVC_NAL_SEI_PREFIX = 39
-HEVC_NAL_SEI_SUFFIX = 40
 
-HEVC_IDR_TYPES = {HEVC_NAL_IDR_W_RADL, HEVC_NAL_IDR_N_LP, HEVC_NAL_CRA,
-                  HEVC_NAL_BLA_W_LP, HEVC_NAL_BLA_W_RADL, HEVC_NAL_BLA_N_LP}
+HEVC_IDR_TYPES = {16, 17, 18, 19, 20, 21}
 HEVC_SLICE_TYPES = (set(range(0, 10)) | set(range(16, 22)))
 
-# AAC ADTS sync word
-AAC_SYNC = 0xFFF
-
-# Insta360 X4 defaults
-X4_VIDEO_WIDTH = 2880
-X4_VIDEO_HEIGHT = 2880
-X4_VIDEO_TIMESCALE = 60000
+# Insta360 X4 defaults observed from reference files in this repair set.
+X4_VIDEO_WIDTH = 1920
+X4_VIDEO_HEIGHT = 1920
+X4_VIDEO_TIMESCALE = 30000
 X4_AUDIO_TIMESCALE = 48000
 X4_AUDIO_CHANNELS = 2
 X4_AUDIO_SAMPLE_RATE = 48000
+
+INSTA360_TRAILER_MAGIC = b'8db42d694ccc418790edff439fe026bf'
 
 # ---------------------------------------------------------------------------
 # Data structures
 # ---------------------------------------------------------------------------
 
 Atom = namedtuple('Atom', ['offset', 'size', 'type', 'header_size'])
-FrameInfo = namedtuple('FrameInfo', ['offset', 'size', 'is_keyframe', 'track'])
-SampleEntry = namedtuple('SampleEntry', ['offset', 'size', 'duration', 'is_sync'])
 
 
 # ---------------------------------------------------------------------------
@@ -102,6 +77,8 @@ class AtomParser:
         if len(header) < 8:
             return None
         size, atom_type = struct.unpack('>I4s', header)
+        if not self._is_plausible_atom_type(atom_type):
+            return None
         header_size = 8
 
         if size == 1:  # 64-bit extended size
@@ -113,7 +90,15 @@ class AtomParser:
         elif size == 0:  # extends to end of file
             size = self.file_size - offset
 
+        if size < header_size:
+            return None
+
         return Atom(offset=offset, size=size, type=atom_type, header_size=header_size)
+
+    @staticmethod
+    def _is_plausible_atom_type(atom_type: bytes) -> bool:
+        """Return True for normal printable ISO BMFF box type bytes."""
+        return all(0x20 <= b <= 0x7e for b in atom_type)
 
     def parse_top_level(self) -> list[Atom]:
         """Parse all top-level atoms."""
@@ -158,133 +143,78 @@ class AtomParser:
         return self.f.read(atom.size)
 
 
+def find_pattern_offsets(f: BinaryIO, pattern: bytes, start: int = 0,
+                         end: Optional[int] = None,
+                         max_results: Optional[int] = None,
+                         chunk_size: int = 64 * 1024 * 1024) -> list[int]:
+    """Find byte offsets for a pattern without loading the whole file."""
+    if end is None:
+        end = f.seek(0, 2)
+    if start >= end or not pattern:
+        return []
+
+    offsets = []
+    overlap = len(pattern) - 1
+    pos = start
+    tail = b''
+
+    while pos < end:
+        f.seek(pos)
+        data = f.read(min(chunk_size, end - pos))
+        if not data:
+            break
+
+        search_data = tail + data
+        base = pos - len(tail)
+        idx = search_data.find(pattern)
+        while idx != -1:
+            found = base + idx
+            if found >= start:
+                offsets.append(found)
+                if max_results is not None and len(offsets) >= max_results:
+                    return offsets
+            idx = search_data.find(pattern, idx + 1)
+
+        tail = search_data[-overlap:] if overlap else b''
+        pos += len(data)
+
+    return offsets
+
+
+def find_insta360_trailer(f: BinaryIO, file_size: int) -> Optional[tuple[int, int]]:
+    """Find Insta360 trailer offset/size from the footer magic and size field."""
+    footer_len = len(INSTA360_TRAILER_MAGIC) + 8
+    if file_size < footer_len:
+        return None
+
+    f.seek(file_size - len(INSTA360_TRAILER_MAGIC))
+    if f.read(len(INSTA360_TRAILER_MAGIC)) != INSTA360_TRAILER_MAGIC:
+        return None
+
+    f.seek(file_size - len(INSTA360_TRAILER_MAGIC) - 8)
+    footer = f.read(8)
+    if len(footer) != 8:
+        return None
+
+    trailer_size = struct.unpack('<I', footer[:4])[0]
+    if trailer_size < footer_len or trailer_size > file_size:
+        return None
+
+    trailer_offset = file_size - trailer_size
+    return trailer_offset, trailer_size
+
+
 # ---------------------------------------------------------------------------
 # HEVC Stream Scanner
 # ---------------------------------------------------------------------------
 
 class HEVCScanner:
-    """Scan raw byte stream for HEVC NAL units and frame boundaries."""
+    """Small HEVC helpers used by the X4 media scanner."""
 
     @staticmethod
     def get_nal_type(nal_header_byte: int) -> int:
         """Extract NAL unit type from first byte of NAL header."""
         return (nal_header_byte >> 1) & 0x3F
-
-    @staticmethod
-    def is_keyframe_nal(nal_type: int) -> bool:
-        return nal_type in HEVC_IDR_TYPES
-
-    @staticmethod
-    def is_slice_nal(nal_type: int) -> bool:
-        return nal_type in HEVC_SLICE_TYPES
-
-
-# ---------------------------------------------------------------------------
-# MP4 Length-Prefixed NAL Scanner
-# ---------------------------------------------------------------------------
-
-class MP4NalScanner:
-    """
-    Scan mdat that uses MP4-style length-prefixed NAL units.
-
-    In MP4/MOV containers, HEVC data uses 4-byte big-endian length prefixes
-    instead of Annex-B start codes (0x000001). Each video sample in the mdat
-    consists of one or more length-prefixed NAL units.
-
-    For Insta360 X4 files, the mdat contains interleaved chunks:
-      - Video track 1 (lens 1) chunks
-      - Video track 2 (lens 2) chunks
-      - Audio chunks
-    These are arranged in chunk groups, with the chunk offsets stored in
-    the stco/co64 atoms of each track.
-    """
-
-    def __init__(self, f: BinaryIO, mdat_offset: int, mdat_size: int):
-        self.f = f
-        self.mdat_offset = mdat_offset
-        self.mdat_data_offset = mdat_offset + 8  # skip mdat header
-        self.mdat_size = mdat_size
-        self.mdat_end = mdat_offset + mdat_size
-
-    def scan_nal_units_at(self, offset: int, max_bytes: int = 1024 * 1024) -> list:
-        """Scan length-prefixed NAL units starting at offset.
-
-        Returns list of (offset, size, nal_type) tuples.
-        """
-        nals = []
-        self.f.seek(offset)
-        pos = offset
-        end = min(offset + max_bytes, self.mdat_end)
-
-        while pos < end:
-            self.f.seek(pos)
-            length_bytes = self.f.read(4)
-            if len(length_bytes) < 4:
-                break
-            nal_length = struct.unpack('>I', length_bytes)[0]
-
-            # Sanity check: NAL length should be reasonable
-            if nal_length == 0 or nal_length > 50 * 1024 * 1024:
-                break
-
-            if pos + 4 + nal_length > self.mdat_end:
-                break
-
-            # Read NAL header (2 bytes for HEVC)
-            nal_header = self.f.read(min(2, nal_length))
-            if len(nal_header) < 1:
-                break
-
-            nal_type = HEVCScanner.get_nal_type(nal_header[0])
-            nals.append((pos, 4 + nal_length, nal_type))
-            pos += 4 + nal_length
-
-        return nals
-
-    def identify_frame_at(self, offset: int) -> Optional[dict]:
-        """Try to identify what kind of frame/data starts at offset.
-
-        Returns dict with keys: type ('video'|'audio'|'unknown'),
-        size, is_keyframe, nal_types.
-        """
-        self.f.seek(offset)
-        header = self.f.read(8)
-        if len(header) < 8:
-            return None
-
-        # Try as length-prefixed HEVC NAL unit
-        nal_length = struct.unpack('>I', header[:4])[0]
-        if 1 <= nal_length <= 50 * 1024 * 1024:
-            nal_type = HEVCScanner.get_nal_type(header[4])
-            if nal_type <= 40:  # Valid HEVC NAL type range
-                # Scan all NALs in this access unit
-                nals = self.scan_nal_units_at(offset)
-                if nals:
-                    total_size = sum(n[1] for n in nals)
-                    nal_types = [n[2] for n in nals]
-                    is_keyframe = any(HEVCScanner.is_keyframe_nal(t) for t in nal_types)
-                    has_slice = any(HEVCScanner.is_slice_nal(t) for t in nal_types)
-                    if has_slice or is_keyframe:
-                        return {
-                            'type': 'video',
-                            'size': total_size,
-                            'is_keyframe': is_keyframe,
-                            'nal_types': nal_types
-                        }
-
-        # Try as AAC ADTS frame
-        if header[0] == 0xFF and (header[1] & 0xF0) == 0xF0:
-            # ADTS header
-            frame_length = ((header[3] & 0x03) << 11) | (header[4] << 3) | ((header[5] >> 5) & 0x07)
-            if 7 <= frame_length <= 8192:
-                return {
-                    'type': 'audio',
-                    'size': frame_length,
-                    'is_keyframe': True,
-                    'nal_types': []
-                }
-
-        return None
 
 
 # ---------------------------------------------------------------------------
@@ -600,10 +530,10 @@ class MoovBuilder:
     def build_moov(self, mvhd: bytes, traks: list[bytes], udta: bytes = None) -> bytes:
         """Build moov container."""
         children = mvhd
-        for trak in traks:
-            children += trak
         if udta:
             children += udta
+        for trak in traks:
+            children += trak
         return struct.pack('>I', len(children) + 8) + b'moov' + children
 
 
@@ -848,109 +778,72 @@ class MdatScanner:
         self.mdat_size = mdat_size
 
     def _try_parse_hevc_sample(self, pos: int) -> Optional[tuple]:
-        """Try to parse one HEVC video sample (access unit) at pos.
+        """Try to parse one Insta360 X4 HEVC video sample at pos.
 
-        Returns (total_size, is_keyframe, nal_types) or None if not valid HEVC.
+        The X4 reference files in this repair set store each video sample as
+        exactly five length-prefixed HEVC VCL NAL units.  The first NAL has
+        first_slice_segment_in_pic_flag set; the following four do not.  This
+        reference-learned rule is intentionally stricter than a generic HEVC
+        parser because raw AAC bytes can contain many false positive NAL-like
+        byte patterns.
+
+        Returns (total_size, is_keyframe) or None if not valid X4 HEVC sample
+        data.
         """
-        if pos + 6 > self.mdat_end:
+        if pos + 7 > self.mdat_end:
             return None
 
-        self.f.seek(pos)
-        first_4 = self.f.read(4)
-        if len(first_4) < 4:
-            return None
-        first_len = struct.unpack('>I', first_4)[0]
-
-        # Quick validation: length must be reasonable
-        if first_len < 2 or first_len > 30 * 1024 * 1024:
-            return None
-
-        # Read first NAL header
-        nal_hdr = self.f.read(2)
-        if len(nal_hdr) < 2:
-            return None
-        first_nal_type = HEVCScanner.get_nal_type(nal_hdr[0])
-
-        # Must be a valid HEVC NAL type
-        if first_nal_type > 40:
-            return None
-
-        # HEVC NAL header has forbidden_zero_bit=0 at MSB
-        if nal_hdr[0] & 0x80:
-            return None
-
-        # Now consume all NAL units in this access unit
-        total_size = 0
-        is_keyframe = False
-        nal_types = []
         cur = pos
-        found_slice = False
+        total_size = 0
+        first_type = None
+        is_keyframe = False
 
-        while cur + 4 < self.mdat_end:
+        for nal_idx in range(5):
+            if cur + 7 > self.mdat_end:
+                return None
             self.f.seek(cur)
-            lb = self.f.read(4)
-            if len(lb) < 4:
-                break
-            nal_length = struct.unpack('>I', lb)[0]
+            header = self.f.read(7)
+            if len(header) < 7:
+                return None
 
-            if nal_length < 2 or nal_length > 30 * 1024 * 1024:
-                break
+            nal_length = struct.unpack('>I', header[:4])[0]
+            if nal_length < 8 or nal_length > 1024 * 1024:
+                return None
             if cur + 4 + nal_length > self.mdat_end:
-                break
+                return None
 
-            nh = self.f.read(2)
-            if len(nh) < 2:
-                break
+            nal_header0 = header[4]
+            nal_header1 = header[5]
+            if nal_header0 & 0x80:
+                return None
+            if (nal_header1 & 0x07) == 0:
+                return None
 
-            # Validate NAL header: forbidden_zero_bit must be 0
-            if nh[0] & 0x80:
-                break
+            nal_type = HEVCScanner.get_nal_type(nal_header0)
+            if nal_type not in HEVC_SLICE_TYPES:
+                return None
+            if first_type is None:
+                first_type = nal_type
+            elif nal_type != first_type:
+                return None
 
-            nal_type = HEVCScanner.get_nal_type(nh[0])
-            if nal_type > 40:
-                break
-
-            nal_types.append(nal_type)
+            first_slice = bool(header[6] & 0x80)
+            if nal_idx == 0 and not first_slice:
+                return None
+            if nal_idx > 0 and first_slice:
+                return None
 
             if nal_type in HEVC_IDR_TYPES:
                 is_keyframe = True
-
             total_size += 4 + nal_length
             cur += 4 + nal_length
 
-            # Parameter sets / SEI: continue to next NAL in same sample
-            if nal_type in (HEVC_NAL_VPS, HEVC_NAL_SPS, HEVC_NAL_PPS,
-                           HEVC_NAL_AUD, HEVC_NAL_SEI_PREFIX, HEVC_NAL_SEI_SUFFIX):
-                continue
-
-            if nal_type in HEVC_SLICE_TYPES or nal_type in HEVC_IDR_TYPES:
-                found_slice = True
-                # Peek at next NAL to see if it's still part of this picture
-                if cur + 6 <= self.mdat_end:
-                    self.f.seek(cur)
-                    peek = self.f.read(6)
-                    if len(peek) >= 6:
-                        peek_len = struct.unpack('>I', peek[:4])[0]
-                        if 2 <= peek_len <= 30 * 1024 * 1024:
-                            peek_type = HEVCScanner.get_nal_type(peek[4])
-                            # If next is SEI suffix, include it
-                            if peek_type == HEVC_NAL_SEI_SUFFIX:
-                                continue
-                            # If next is same slice type without first_slice flag, include it
-                            if peek_type in HEVC_SLICE_TYPES and not (peek[5] & 0x80):
-                                continue
-                break
-
-        if total_size == 0 or not found_slice:
+        if total_size < 1000:
             return None
 
-        # Additional validation: total size should be > 100 bytes for a real frame
-        if total_size < 100:
-            return None
+        return (total_size, is_keyframe)
 
-        return (total_size, is_keyframe, nal_types)
-
-    def _find_next_hevc_start(self, start: int, max_search: int = 64 * 1024) -> Optional[int]:
+    def _find_next_hevc_start(self, start: int, max_search: int = 2 * 1024 * 1024) -> Optional[int]:
         """Find the next position that looks like a valid HEVC sample start.
 
         Used to determine audio chunk boundaries (audio = gap between video chunks).
@@ -966,6 +859,65 @@ class MdatScanner:
             pos += 1  # Byte-by-byte search (audio chunks are small ~505 bytes)
 
         return None
+
+    @staticmethod
+    def _split_audio_region_size(region_size: int) -> list[int]:
+        """Split a raw AAC gap into frame-sized samples.
+
+        X4 raw AAC has no ADTS headers.  Across the reference files, audio
+        samples average almost exactly 505 bytes, with normal variation around
+        that value.  Estimate sample count from the gap size and distribute the
+        bytes evenly so the sample table covers the gap exactly.
+        """
+        if region_size < 50:
+            return []
+
+        n_samples = max(1, int(round(region_size / 505)))
+        base = region_size // n_samples
+        extra = region_size % n_samples
+        return [base + (1 if i < extra else 0) for i in range(n_samples)]
+
+    def _add_audio_region(self, result: dict, audio_track_idx: int,
+                          start: int, end: int):
+        """Add audio samples covering [start, end)."""
+        pos = start
+        for size in self._split_audio_region_size(end - start):
+            result[audio_track_idx]['chunk_offsets'].append(pos)
+            result[audio_track_idx]['sample_sizes'].append(size)
+            pos += size
+
+    @staticmethod
+    def _trim_audio_to_video_duration(result: dict, video_track_indices: list[int],
+                                      audio_track_idx: Optional[int]):
+        """Keep estimated raw AAC duration aligned with recovered video."""
+        if audio_track_idx is None or audio_track_idx not in result:
+            return
+        if not video_track_indices:
+            return
+
+        video_durations = []
+        for idx in video_track_indices:
+            sr = result[idx]
+            if not sr['sample_sizes']:
+                continue
+            video_durations.append(
+                len(sr['sample_sizes']) * sr['sample_delta'] / sr['timescale'])
+        if not video_durations:
+            return
+
+        target_seconds = min(video_durations)
+        audio = result[audio_track_idx]
+        target_samples = int(round(
+            target_seconds * audio['timescale'] / audio['sample_delta']))
+        if target_samples <= 0:
+            return
+
+        current = len(audio['sample_sizes'])
+        if current > target_samples + 1:
+            print(f"  Trimming audio table from {current} to {target_samples} "
+                  "samples to match video duration")
+            del audio['sample_sizes'][target_samples:]
+            del audio['chunk_offsets'][target_samples:]
 
     def scan_chunks_with_reference(self, ref_info: dict) -> dict:
         """Scan mdat using reference file parameters to rebuild sample tables.
@@ -997,7 +949,6 @@ class MdatScanner:
         total_bytes = self.mdat_end - self.mdat_data_start
         last_progress = -1
         video_sample_count = {i: 0 for i in video_track_indices}
-        audio_sample_count = 0
         next_video_track = 0  # Alternates between 0 and 1
 
         print(f"  Scanning {total_bytes / (1024*1024*1024):.2f} GB of media data...")
@@ -1013,7 +964,7 @@ class MdatScanner:
             hevc_result = self._try_parse_hevc_sample(pos)
 
             if hevc_result is not None:
-                sample_size, is_keyframe, nal_types = hevc_result
+                sample_size, is_keyframe = hevc_result
 
                 # Assign to alternating video track
                 track_idx = video_track_indices[next_video_track % num_video_tracks]
@@ -1035,58 +986,21 @@ class MdatScanner:
                     next_hevc = self._find_next_hevc_start(pos + 1)
 
                     if next_hevc is not None:
-                        audio_region = next_hevc - pos
-
-                        # Audio frames in X4 are ~505 bytes each
-                        # Split the region into individual audio samples
-                        audio_pos = pos
-                        while audio_pos + 100 <= next_hevc:
-                            # Determine this audio frame's size
-                            remaining = next_hevc - audio_pos
-                            # Try to find frame boundary by checking if a valid
-                            # HEVC NAL starts after ~505 bytes
-                            frame_size = min(505, remaining)
-
-                            # For more accuracy, check nearby offsets
-                            if remaining > 505:
-                                # See if 505 bytes brings us to another audio frame
-                                # or to a HEVC start
-                                check = self._try_parse_hevc_sample(audio_pos + 505)
-                                if check is not None:
-                                    frame_size = 505
-                                elif remaining >= 1010:
-                                    # Might be multiple audio frames
-                                    frame_size = 505
-                                else:
-                                    frame_size = remaining
-
-                            result[audio_track_idx]['chunk_offsets'].append(audio_pos)
-                            result[audio_track_idx]['sample_sizes'].append(frame_size)
-                            audio_sample_count += 1
-                            audio_pos += frame_size
-
+                        self._add_audio_region(result, audio_track_idx, pos, next_hevc)
                         pos = next_hevc
                     else:
-                        # No more HEVC found - remaining data might be audio
-                        remaining = self.mdat_end - pos
-                        if remaining > 100:
-                            audio_pos = pos
-                            while audio_pos + 100 < self.mdat_end:
-                                frame_size = min(505, self.mdat_end - audio_pos)
-                                if frame_size < 50:
-                                    break
-                                result[audio_track_idx]['chunk_offsets'].append(audio_pos)
-                                result[audio_track_idx]['sample_sizes'].append(frame_size)
-                                audio_sample_count += 1
-                                audio_pos += frame_size
+                        # No more video found. Treat the rest as non-media
+                        # trailer/padding instead of guessing it is audio.
                         break
                 else:
                     # No audio track - try to skip and find next video
-                    next_hevc = self._find_next_hevc_start(pos + 1, max_search=1024*1024)
+                    next_hevc = self._find_next_hevc_start(pos + 1, max_search=2*1024*1024)
                     if next_hevc:
                         pos = next_hevc
                     else:
                         break
+
+        self._trim_audio_to_video_duration(result, video_track_indices, audio_track_idx)
 
         # Print summary
         for i, track in enumerate(tracks):
@@ -1126,7 +1040,6 @@ class MdatScanner:
         total_bytes = self.mdat_end - self.mdat_data_start
         last_progress = -1
         video_count = {0: 0, 1: 0}
-        audio_count = 0
         next_video_track = 0
 
         while pos < self.mdat_end - 6:
@@ -1138,7 +1051,7 @@ class MdatScanner:
             hevc_result = self._try_parse_hevc_sample(pos)
 
             if hevc_result is not None:
-                sample_size, is_keyframe, nal_types = hevc_result
+                sample_size, is_keyframe = hevc_result
                 track_idx = next_video_track % 2
                 next_video_track += 1
 
@@ -1153,23 +1066,17 @@ class MdatScanner:
                 # Audio data - find next HEVC start
                 next_hevc = self._find_next_hevc_start(pos + 1)
                 if next_hevc is not None:
-                    audio_pos = pos
-                    while audio_pos + 50 <= next_hevc:
-                        frame_size = min(505, next_hevc - audio_pos)
-                        if frame_size < 50:
-                            break
-                        result[2]['chunk_offsets'].append(audio_pos)
-                        result[2]['sample_sizes'].append(frame_size)
-                        audio_count += 1
-                        audio_pos += frame_size
+                    self._add_audio_region(result, 2, pos, next_hevc)
                     pos = next_hevc
                 else:
                     # Try larger search
-                    next_hevc = self._find_next_hevc_start(pos + 1, max_search=1024 * 1024)
+                    next_hevc = self._find_next_hevc_start(pos + 1, max_search=2 * 1024 * 1024)
                     if next_hevc:
                         pos = next_hevc
                     else:
                         break
+
+        self._trim_audio_to_video_duration(result, [0, 1], 2)
 
         for i in range(3):
             n = len(result[i]['sample_sizes'])
@@ -1202,10 +1109,17 @@ class INSVDiagnoser:
             'has_ftyp': False,
             'has_mdat': False,
             'has_moov': False,
+            'mdat_declared_size': None,
             'mdat_offset': None,
             'mdat_size': None,
+            'mdat_header_size': None,
             'moov_offset': None,
             'moov_size': None,
+            'embedded_moov_offset': None,
+            'embedded_moov_size': None,
+            'trailer_magic_offset': None,
+            'trailer_offset': None,
+            'trailer_size': None,
             'issues': [],
             'tracks': [],
             'repairable': False,
@@ -1218,6 +1132,13 @@ class INSVDiagnoser:
         print(f"File: {self.filepath}")
         print(f"Size: {self.file_size:,} bytes ({self.file_size / (1024*1024*1024):.2f} GB)")
         print()
+
+        trailer = find_insta360_trailer(self.f, self.file_size)
+        if trailer:
+            findings['trailer_offset'], findings['trailer_size'] = trailer
+            print(f"Detected Insta360 trailer: offset {trailer[0]:#x}, "
+                  f"size {trailer[1]:,} bytes")
+            print()
 
         # Parse top-level atoms
         atoms = self.parser.parse_top_level()
@@ -1237,8 +1158,12 @@ class INSVDiagnoser:
                 print(f"  ftyp brand: {brand.decode('ascii', errors='replace')}")
             elif atom.type == b'mdat':
                 findings['has_mdat'] = True
+                self.f.seek(atom.offset)
+                raw_size = struct.unpack('>I', self.f.read(4))[0]
+                findings['mdat_declared_size'] = raw_size
                 findings['mdat_offset'] = atom.offset
                 findings['mdat_size'] = atom.size
+                findings['mdat_header_size'] = atom.header_size
             elif atom.type == b'moov':
                 findings['has_moov'] = True
                 findings['moov_offset'] = atom.offset
@@ -1267,6 +1192,7 @@ class INSVDiagnoser:
             # Try to detect if this is an Insta360 X4 file by scanning mdat start
             if findings['has_mdat']:
                 self._probe_mdat(findings)
+                self._probe_hidden_metadata(findings)
 
         else:
             # Moov exists - check its integrity
@@ -1293,7 +1219,7 @@ class INSVDiagnoser:
 
     def _probe_mdat(self, findings: dict):
         """Probe the start of mdat to identify the camera/format."""
-        mdat_data_start = findings['mdat_offset'] + 8
+        mdat_data_start = findings['mdat_offset'] + findings.get('mdat_header_size', 8)
         self.f.seek(mdat_data_start)
         header = self.f.read(64)
 
@@ -1312,6 +1238,55 @@ class INSVDiagnoser:
             elif nal_type in HEVC_IDR_TYPES:
                 findings['issues'].append(
                     "INFO: mdat starts with HEVC IDR frame - good for recovery")
+
+    def _probe_hidden_metadata(self, findings: dict):
+        """Look for moov/trailer data hidden inside a size-0 mdat."""
+        if findings.get('mdat_declared_size') != 0:
+            return
+
+        search_start = findings['mdat_offset'] + findings.get('mdat_header_size', 8)
+        moov = self._find_embedded_moov(search_start)
+        if moov:
+            findings['embedded_moov_offset'] = moov.offset
+            findings['embedded_moov_size'] = moov.size
+            findings['repair_strategy'] = 'salvage_embedded_moov'
+            findings['issues'].append(
+                f"INFO: Found valid embedded moov at {moov.offset:#x} "
+                f"({moov.size:,} bytes); repair can rewrite mdat size and reuse it")
+
+        magic_offsets = find_pattern_offsets(
+            self.f, INSTA360_TRAILER_MAGIC, start=search_start, max_results=1)
+        if magic_offsets:
+            findings['trailer_magic_offset'] = magic_offsets[0]
+            findings['issues'].append(
+                f"INFO: Found Insta360 trailer magic at {magic_offsets[0]:#x}")
+
+        if findings.get('trailer_offset') is not None:
+            findings['issues'].append(
+                f"INFO: Footer reports Insta360 trailer starts at "
+                f"{findings['trailer_offset']:#x} "
+                f"({findings['trailer_size']:,} bytes)")
+
+    def _find_embedded_moov(self, start: int) -> Optional[Atom]:
+        """Find a valid moov box after mdat data starts."""
+        for type_offset in find_pattern_offsets(self.f, b'moov', start=start):
+            if type_offset < 4:
+                continue
+            atom = self.parser.read_atom_header(type_offset - 4)
+            if atom and atom.type == b'moov' and atom.offset + atom.size <= self.file_size:
+                if self._looks_like_moov(atom):
+                    return atom
+        return None
+
+    def _looks_like_moov(self, atom: Atom) -> bool:
+        """Validate that a candidate moov has normal movie children."""
+        try:
+            children = self.parser.parse_children(atom)
+        except Exception:
+            return False
+        has_mvhd = any(child.type == b'mvhd' for child in children)
+        trak_count = sum(1 for child in children if child.type == b'trak')
+        return has_mvhd and trak_count > 0
 
     def _check_moov(self, moov: Atom, findings: dict):
         """Check moov atom integrity."""
@@ -1387,6 +1362,7 @@ class INSVRepairer:
             bf_size = bf.seek(0, 2)
             parser = AtomParser(bf, bf_size)
             atoms = parser.parse_top_level()
+            trailer = find_insta360_trailer(bf, bf_size)
 
             mdat = parser.find_atom(atoms, b'mdat')
             moov = parser.find_atom(atoms, b'moov')
@@ -1411,10 +1387,29 @@ class INSVRepairer:
                     mdat_size = actual_mdat_size
 
             print(f"  mdat at offset {mdat_offset:#x}, size {mdat_size:,} bytes")
+            trailer_offset = None
+            if trailer and trailer[0] > mdat_offset:
+                trailer_offset = trailer[0]
+                media_mdat_size = trailer_offset - mdat_offset
+                if media_mdat_size < mdat_size:
+                    print(f"  Insta360 trailer starts at {trailer_offset:#x}; "
+                          f"using {media_mdat_size:,} bytes as media mdat")
+                    mdat_size = media_mdat_size
 
             if moov:
                 print(f"  WARNING: File already has a moov atom at {moov.offset:#x}")
                 print(f"  Will rebuild moov anyway (existing one may be corrupted)")
+
+            hidden_moov = None
+            if mdat is not None:
+                hidden_moov = self._find_embedded_moov(
+                    bf, parser, mdat_offset + mdat_header_size, bf_size)
+            if hidden_moov:
+                print(f"  Found embedded moov at {hidden_moov.offset:#x} "
+                      f"({hidden_moov.size:,} bytes)")
+                print("  Rewriting mdat size and preserving embedded metadata...")
+                self._build_from_embedded_metadata(bf, mdat, hidden_moov)
+                return True
 
             # Scan mdat
             print("\n[3/4] Scanning media data...")
@@ -1430,7 +1425,7 @@ class INSVRepairer:
             print("\n[4/4] Building repaired file...")
             self._build_repaired_file(bf, ref_info, scan_result,
                                       mdat_offset, mdat_size,
-                                      has_ftyp, ftyp)
+                                      has_ftyp, ftyp, trailer_offset)
 
         print(f"\nRepair complete: {self.output_path}")
         return True
@@ -1448,6 +1443,7 @@ class INSVRepairer:
             bf_size = bf.seek(0, 2)
             parser = AtomParser(bf, bf_size)
             atoms = parser.parse_top_level()
+            trailer = find_insta360_trailer(bf, bf_size)
 
             mdat = parser.find_atom(atoms, b'mdat')
             ftyp = parser.find_atom(atoms, b'ftyp')
@@ -1469,6 +1465,24 @@ class INSVRepairer:
                 mdat_header_size = mdat.header_size
 
             print(f"  Media data: {mdat_size:,} bytes at offset {mdat_offset:#x}")
+            trailer_offset = None
+            if trailer and trailer[0] > mdat_offset:
+                trailer_offset = trailer[0]
+                media_mdat_size = trailer_offset - mdat_offset
+                if media_mdat_size < mdat_size:
+                    print(f"  Insta360 trailer starts at {trailer_offset:#x}; "
+                          f"using {media_mdat_size:,} bytes as media mdat")
+                    mdat_size = media_mdat_size
+
+            if mdat:
+                hidden_moov = self._find_embedded_moov(
+                    bf, parser, mdat_offset + mdat_header_size, bf_size)
+                if hidden_moov:
+                    print(f"  Found embedded moov at {hidden_moov.offset:#x} "
+                          f"({hidden_moov.size:,} bytes)")
+                    print("  Rewriting mdat size and preserving embedded metadata...")
+                    self._build_from_embedded_metadata(bf, mdat, hidden_moov)
+                    return True
 
             # Scan
             print("\nScanning media data for frames...")
@@ -1500,7 +1514,7 @@ class INSVRepairer:
             has_ftyp = ftyp is not None
             self._build_repaired_file(bf, ref_info, scan_result,
                                       mdat_offset, mdat_size,
-                                      has_ftyp, ftyp)
+                                      has_ftyp, ftyp, trailer_offset)
 
         print(f"\nRepair complete: {self.output_path}")
         return True
@@ -1549,6 +1563,78 @@ class INSVRepairer:
 
         return vps, sps, pps
 
+    def _find_embedded_moov(self, f: BinaryIO, parser: AtomParser,
+                            start: int, file_size: int) -> Optional[Atom]:
+        """Find a valid moov box hidden after a size-0 mdat header."""
+        for type_offset in find_pattern_offsets(f, b'moov', start=start):
+            if type_offset < 4:
+                continue
+            atom = parser.read_atom_header(type_offset - 4)
+            if atom and atom.type == b'moov' and atom.offset + atom.size <= file_size:
+                if self._looks_like_moov(parser, atom):
+                    return atom
+        return None
+
+    @staticmethod
+    def _looks_like_moov(parser: AtomParser, atom: Atom) -> bool:
+        """Validate that a candidate moov has normal movie children."""
+        try:
+            children = parser.parse_children(atom)
+        except Exception:
+            return False
+        has_mvhd = any(child.type == b'mvhd' for child in children)
+        trak_count = sum(1 for child in children if child.type == b'trak')
+        return has_mvhd and trak_count > 0
+
+    def _build_from_embedded_metadata(self, broken_f: BinaryIO,
+                                      mdat_atom: Atom, moov_atom: Atom):
+        """Repair a size-0 mdat that swallowed a complete moov/trailer."""
+        old_mdat_header_size = mdat_atom.header_size
+        mdat_payload_size = moov_atom.offset - (mdat_atom.offset + old_mdat_header_size)
+        if mdat_payload_size < 0:
+            raise ValueError("embedded moov appears before mdat payload")
+
+        new_mdat_size = mdat_payload_size + old_mdat_header_size
+        if old_mdat_header_size != 8 or new_mdat_size > 0xFFFFFFFF:
+            raise ValueError(
+                "embedded moov salvage needs offset patching for this mdat size/header")
+
+        print("\n  Writing repaired file from embedded metadata...")
+        print(f"    prefix: {mdat_atom.offset:,} bytes")
+        print(f"    mdat:   {new_mdat_size:,} bytes")
+        print(f"    moov+:  {os.path.getsize(self.broken_path) - moov_atom.offset:,} bytes")
+
+        with open(self.output_path, 'wb') as out:
+            broken_f.seek(0)
+            remaining = mdat_atom.offset
+            while remaining > 0:
+                chunk = broken_f.read(min(64 * 1024 * 1024, remaining))
+                if not chunk:
+                    break
+                out.write(chunk)
+                remaining -= len(chunk)
+
+            out.write(struct.pack('>I4s', new_mdat_size, b'mdat'))
+
+            broken_f.seek(mdat_atom.offset + old_mdat_header_size)
+            remaining = mdat_payload_size
+            while remaining > 0:
+                chunk = broken_f.read(min(64 * 1024 * 1024, remaining))
+                if not chunk:
+                    break
+                out.write(chunk)
+                remaining -= len(chunk)
+
+            broken_f.seek(moov_atom.offset)
+            while True:
+                chunk = broken_f.read(64 * 1024 * 1024)
+                if not chunk:
+                    break
+                out.write(chunk)
+
+        total_size = os.path.getsize(self.output_path)
+        print(f"    Total:  {total_size:,} bytes ({total_size / (1024*1024*1024):.2f} GB)")
+
     def _build_ref_info_from_scan(self, scan_result: dict,
                                    vps: bytes, sps: bytes, pps: bytes) -> dict:
         """Build a reference info dict from scan results."""
@@ -1583,14 +1669,15 @@ class INSVRepairer:
 
         return {
             'tracks': tracks,
-            'mvhd_timescale': 600,
+            'mvhd_timescale': X4_VIDEO_TIMESCALE,
             'udta': None,
             'ftyp': None,
         }
 
     def _build_repaired_file(self, broken_f: BinaryIO, ref_info: dict,
                               scan_result: dict, mdat_offset: int, mdat_size: int,
-                              has_ftyp: bool, ftyp_atom: Atom = None):
+                              has_ftyp: bool, ftyp_atom: Atom = None,
+                              trailer_offset: Optional[int] = None):
         """Build the repaired output file."""
         builder = MoovBuilder(timescale=ref_info.get('mvhd_timescale', 600))
         tracks = ref_info['tracks']
@@ -1608,10 +1695,64 @@ class INSVRepairer:
 
         ftyp_size = len(ftyp_data)
 
+        source_mdat_header_size = 8
+        if mdat_offset is not None:
+            broken_f.seek(mdat_offset)
+            header = broken_f.read(16)
+            if len(header) >= 16 and header[4:8] == b'mdat' and struct.unpack('>I', header[:4])[0] == 1:
+                source_mdat_header_size = 16
+            elif len(header) >= 8 and header[4:8] == b'mdat':
+                source_mdat_header_size = 8
+            else:
+                source_mdat_header_size = 0
+
+        payload_size = mdat_size - source_mdat_header_size
+        if payload_size < 0:
+            payload_size = mdat_size
+            source_mdat_header_size = 0
+
+        original_payload_size = payload_size
+        trailer_payload_offset = trailer_offset
+        trailer_payload_size = 0
+        if trailer_payload_offset is not None:
+            trailer_payload_size = os.path.getsize(self.broken_path) - trailer_payload_offset
+        media_payload_end = None
+        for sr in scan_result.values():
+            for offset, size in zip(sr.get('chunk_offsets', []), sr.get('sample_sizes', [])):
+                sample_end = offset + size
+                if media_payload_end is None or sample_end > media_payload_end:
+                    media_payload_end = sample_end
+
+        if media_payload_end is not None:
+            scanned_payload_size = media_payload_end - (mdat_offset + source_mdat_header_size)
+            if 0 < scanned_payload_size < payload_size:
+                print(f"  Trimming {payload_size - scanned_payload_size:,} appended bytes "
+                      "from mdat payload")
+                if trailer_payload_offset is None:
+                    trailer_payload_offset = mdat_offset + source_mdat_header_size + scanned_payload_size
+                    trailer_payload_size = original_payload_size - scanned_payload_size
+                payload_size = scanned_payload_size
+
+        trailer_suffix_size = 0
+        if trailer_payload_offset is not None and trailer_payload_size > 0:
+            magic_offsets = find_pattern_offsets(
+                broken_f, INSTA360_TRAILER_MAGIC,
+                start=trailer_payload_offset,
+                end=trailer_payload_offset + trailer_payload_size,
+                max_results=1)
+            if magic_offsets:
+                trailer_suffix_size = trailer_payload_size
+            else:
+                trailer_payload_offset = None
+                trailer_payload_size = 0
+
+        new_mdat_header_size = 16 if payload_size + 8 > 0xFFFFFFFF else 8
+        new_mdat_size = payload_size + new_mdat_header_size
+
         # Calculate new mdat offset and the shift for chunk offsets
         new_mdat_offset = ftyp_size
-        old_mdat_data_start = mdat_offset + 8  # original mdat header is 8 bytes
-        new_mdat_data_start = new_mdat_offset + 8
+        old_mdat_data_start = mdat_offset + source_mdat_header_size
+        new_mdat_data_start = new_mdat_offset + new_mdat_header_size
         offset_shift = new_mdat_data_start - old_mdat_data_start
 
         # Build track atoms
@@ -1717,39 +1858,26 @@ class INSVRepairer:
         # Write output file
         print(f"\n  Writing repaired file...")
         print(f"    ftyp: {len(ftyp_data):,} bytes")
-        print(f"    mdat: {mdat_size:,} bytes")
+        print(f"    mdat: {new_mdat_size:,} bytes")
         print(f"    moov: {len(moov):,} bytes")
+        if trailer_suffix_size:
+            print(f"    trailer: {trailer_suffix_size:,} bytes")
 
         with open(self.output_path, 'wb') as out:
             # Write ftyp
             out.write(ftyp_data)
 
-            # Write mdat (copy from broken file)
-            broken_f.seek(mdat_offset)
-            mdat_header = struct.pack('>I', 1) + b'mdat' + struct.pack('>Q', mdat_size)
-            if mdat_size > 0xFFFFFFFF:
-                # Use 64-bit mdat size
-                out.write(mdat_header)
-                # Skip original mdat header and copy data
-                broken_f.seek(mdat_offset + 8)
-                remaining = mdat_size - 8
+            # Write a fresh mdat header. Broken files often use size=0
+            # ("extends to EOF"), which would swallow the appended moov.
+            if new_mdat_header_size == 16:
+                out.write(struct.pack('>I4sQ', 1, b'mdat', new_mdat_size))
             else:
-                # Copy mdat as-is
-                remaining = mdat_size
+                out.write(struct.pack('>I4s', new_mdat_size, b'mdat'))
 
-            # Buffered copy
-            broken_f.seek(mdat_offset + (16 if mdat_size > 0xFFFFFFFF else 0))
+            # Buffered copy of the original media payload only.
+            broken_f.seek(old_mdat_data_start)
             buf_size = 64 * 1024 * 1024  # 64MB buffer
-            copied = 0
-            if mdat_size > 0xFFFFFFFF:
-                remaining = mdat_size - 16
-                broken_f.seek(mdat_offset + 8)
-            else:
-                # Write original mdat header
-                broken_f.seek(mdat_offset)
-                mdat_hdr = broken_f.read(8)
-                out.write(mdat_hdr)
-                remaining = mdat_size - 8
+            remaining = payload_size
 
             while remaining > 0:
                 chunk = broken_f.read(min(buf_size, remaining))
@@ -1757,10 +1885,19 @@ class INSVRepairer:
                     break
                 out.write(chunk)
                 remaining -= len(chunk)
-                copied += len(chunk)
 
             # Write moov
             out.write(moov)
+
+            if trailer_suffix_size:
+                broken_f.seek(trailer_payload_offset)
+                remaining = trailer_suffix_size
+                while remaining > 0:
+                    chunk = broken_f.read(min(buf_size, remaining))
+                    if not chunk:
+                        break
+                    out.write(chunk)
+                    remaining -= len(chunk)
 
         total_size = os.path.getsize(self.output_path)
         print(f"    Total: {total_size:,} bytes ({total_size / (1024*1024*1024):.2f} GB)")
@@ -1809,6 +1946,9 @@ Examples:
   # Repair using a reference file (recommended):
   python3 insv_repair.py broken.insv --reference good_file.insv
 
+  # Repair and print diagnostics for the repaired output:
+  python3 insv_repair.py broken.insv --reference good_file.insv --diagnose
+
   # Repair without a reference file (scan mode):
   python3 insv_repair.py broken.insv --scan
 
@@ -1821,7 +1961,8 @@ Examples:
     parser.add_argument('--scan', '-s', action='store_true',
                         help='Scan mode: rebuild moov by scanning mdat (no reference needed)')
     parser.add_argument('--diagnose', '-d', action='store_true',
-                        help='Diagnose only - do not repair')
+                        help='Diagnose only unless combined with a repair mode; '
+                             'with repair, diagnose the repaired output')
     parser.add_argument('--output', '-o', help='Output file path')
 
     args = parser.parse_args()
@@ -1830,7 +1971,9 @@ Examples:
         print(f"Error: File not found: {args.input}")
         sys.exit(1)
 
-    if args.diagnose:
+    repair_requested = bool(args.reference or args.scan)
+
+    if args.diagnose and not repair_requested:
         diag = INSVDiagnoser(args.input)
         diag.diagnose()
         diag.close()
@@ -1862,6 +2005,12 @@ Examples:
     if not success:
         print("\nRepair failed.")
         sys.exit(1)
+
+    if args.diagnose:
+        print("\nDiagnosing repaired output...")
+        diag = INSVDiagnoser(repairer.output_path)
+        diag.diagnose()
+        diag.close()
 
     # Verify with ffprobe if available
     print("\nVerifying repaired file...")
