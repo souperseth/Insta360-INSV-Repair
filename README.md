@@ -1,18 +1,23 @@
 # Insta360 X4 .insv File Repair Tool
 
 Repairs broken or corrupted `.insv` video files from the Insta360 X4 camera.
+The current implementation is tuned for X4 files that stopped recording badly:
+the `mdat` box is left with a size of `0`, so it incorrectly swallows data that
+should have been the final metadata/trailer.
 
 ## Common Corruption Scenarios
 
-- **Missing moov atom** — recording interrupted by power loss or crash
-- **Truncated mdat** — incomplete recording
-- **Corrupted atom headers**
+- **Missing `moov` atom**: recording interrupted by power loss, crash, or a bad stop.
+- **Size-0 `mdat`**: the media data box extends to EOF and incorrectly contains the Insta360 trailer.
+- **Missing or swallowed trailer**: proprietary Insta360 sensor/stabilization data is appended after `moov`.
+- **Incomplete recording**: only bytes that were actually written to disk can be recovered.
 
 ## Requirements
 
 - Python 3.10+
 - No external dependencies (stdlib only)
 - Optional: [FFmpeg](https://ffmpeg.org/) (`ffprobe`) for output verification
+- Optional: [ExifTool](https://exiftool.org/) for inspecting QuickTime boxes and trailer warnings
 
 ## Usage
 
@@ -22,17 +27,37 @@ Repairs broken or corrupted `.insv` video files from the Insta360 X4 camera.
 python3 insv_repair.py broken.insv --diagnose
 ```
 
+When `--diagnose` is combined with a repair mode, the repair runs first and the
+console then prints diagnostics for the repaired output file.
+
+```bash
+python3 insv_repair.py broken.insv --reference good_file.insv --diagnose
+```
+
 ### Repair using a reference file (recommended)
 
-Uses a known-good `.insv` file recorded with the same camera and settings to reconstruct the moov atom with correct codec parameters.
+Uses a known-good `.insv` file recorded with the same camera and settings to
+reconstruct the `moov` atom with correct codec parameters and sample table
+shape. This is the best path for X4 recovery.
 
 ```bash
 python3 insv_repair.py broken.insv --reference good_file.insv
 ```
 
+Example from this repo:
+
+```bash
+python3 insv_repair.py \
+  broken/VID_20260509_161202_00_660.insv \
+  --reference reference/VID_20260509_150725_00_656.insv \
+  -o broken/VID_20260509_161202_00_660_repaired.insv
+```
+
 ### Repair without a reference file (scan mode)
 
-Scans the raw mdat data to detect HEVC/AAC frames and rebuilds the moov atom from scratch. Slower, but doesn't require a reference file.
+Scans raw `mdat` data and rebuilds `moov` from scratch. This is less reliable
+than reference mode because X4 AAC is stored without ADTS headers, so audio
+frame boundaries must be estimated.
 
 ```bash
 python3 insv_repair.py broken.insv --scan
@@ -48,16 +73,74 @@ By default, the output is written to `<original_name>_repaired.insv`.
 
 ## How It Works
 
-1. **Diagnosis** — Parses the MP4/MOV atom structure to identify missing or corrupted atoms (ftyp, mdat, moov).
-2. **mdat Scanning** — Walks through the media data sequentially, identifying HEVC video samples (length-prefixed NAL units) and raw AAC audio chunks. Insta360 X4 files interleave two video tracks (one per lens) with an audio track.
-3. **moov Reconstruction** — Builds a complete moov atom with proper track headers, sample tables (stts, stss, stsc, stsz, co64), and codec configuration (hvcC for HEVC, esds for AAC).
-4. **Output** — Writes a new file with ftyp + mdat + moov in the correct order.
+1. **Diagnosis**: parses the MP4/QuickTime box structure and detects `ftyp`,
+   `mdat`, `moov`, and the Insta360 trailer footer.
+2. **Trailer boundary detection**: finds the Insta360 footer magic
+   `8db42d694ccc418790edff439fe026bf`, reads the trailer size, and stops media
+   scanning before the trailer starts.
+3. **Reference analysis**: copies track metadata, codec sample descriptions, and
+   timing rules from a healthy X4 `.insv`.
+4. **`mdat` scanning**: detects X4 HEVC access units using the reference-learned
+   five-NAL pattern. Non-video gaps between valid video samples are treated as
+   raw AAC and split into estimated AAC samples.
+5. **`moov` reconstruction**: builds coherent `mvhd`, `trak`, and sample tables
+   (`stts`, `stss`, `stsc`, `stsz`, `co64`) with `moov` children ordered like
+   the camera files: `mvhd`, `udta`, `trak`, `trak`, `trak`.
+6. **Output**: writes a new file as `ftyp + mdat + moov + Insta360 trailer`.
+   The repaired `mdat` gets a real size instead of `size=0`.
+
+## Insta360 X4 Structure Notes
+
+Observed good X4 files in this repo use:
+
+- Track 1: HEVC/hvc1 lens video, 1920x1920, timescale 30000, 29.97 fps.
+- Track 2: HEVC/hvc1 lens video, 1920x1920, timescale 30000, 29.97 fps.
+- Track 3: AAC-LC audio, stereo, 48000 Hz.
+- Video sample delta: 1001 ticks.
+- Audio sample delta: 1024 ticks.
+- `samples_per_chunk = 1` for all tracks.
+- `mdat` is interleaved as lens video samples plus audio gaps.
+- The proprietary Insta360 trailer is appended after `moov`, not stored as a
+  normal MP4 box.
+
+More detailed implementation notes are in
+[INSV_REPAIR_NOTES.md](INSV_REPAIR_NOTES.md). A standalone description of the
+observed X4 container is in [INSV_FORMAT.md](INSV_FORMAT.md).
+
+## Validation
+
+After repair, check duration and bitrate:
+
+```bash
+ffprobe -v error \
+  -show_entries format=duration,size,bit_rate \
+  -show_entries stream=index,codec_name,codec_type,width,height,duration,nb_frames \
+  -of compact repaired.insv
+```
+
+Optional ExifTool check:
+
+```bash
+exiftool -api LargeFileSupport=1 -G1 -a -s \
+  -Duration -AvgBitrate -MediaDataSize -MediaDataOffset -Warning repaired.insv
+```
+
+For the repaired sample tested during development, the result was about
+707.44 seconds with a bitrate around 37 Mbps, matching the good reference files
+instead of the multi-gigabit bitrate caused by the broken sample tables.
 
 ## Limitations
 
-- Designed specifically for the Insta360 X4 (dual-lens HEVC at 2880x2880, 48kHz stereo AAC). May work with other Insta360 models but is untested.
-- Scan mode assumes ~505-byte raw AAC audio frames and alternating video track chunks. Files with non-standard interleaving patterns may produce incorrect results.
-- Cannot recover data that was never written to disk. If recording was interrupted, only the data present in the file can be salvaged.
+- Designed specifically for the Insta360 X4 files observed in this project.
+  Other Insta360 models or other X4 modes may use different dimensions,
+  interleaving, timing, or trailer details.
+- Reference mode is strongly recommended. Standalone scan mode is best-effort.
+- Raw AAC frame boundaries are estimated because the camera stores AAC without
+  ADTS sync headers.
+- The trailer is preserved when the footer magic and size are present. If the
+  trailer itself was never written or is corrupt, advanced Insta360 features may
+  still be degraded.
+- The tool cannot recover media bytes that were never written to disk.
 
 ## License
 
