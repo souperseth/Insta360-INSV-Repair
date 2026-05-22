@@ -1,6 +1,37 @@
 #!/usr/bin/env python3
 """Analyze Insta360 INSV IMU data for acro paragliding maneuvers.
 
+--------------------------------------------------------------------------------
+Candidate Intervals (Event Detection)
+--------------------------------------------------------------------------------
+
+A “candidate” is a coarse, threshold-based time interval that may correspond to
+an acro maneuver or a phase of interest (e.g., high-G load, fast rotation, etc.).
+Candidates are NOT final maneuver labels—they are intended for review, labeling,
+or as input to further machine learning.
+
+Candidate detection is performed by `detect_candidate_segments()` and related
+helpers. The following candidate types are detected:
+
+- high_g_load_pulse_candidate: sustained load above the high-G threshold (bottom/load phase)
+- fast_rotation_candidate: sustained angular velocity above the rotation threshold
+- loaded_rotation_phase_candidate: high load and fast rotation at the same time
+- infinite_tumble_candidate: sustained rotation with repeated high-G load pulses
+- single_axis_spin_candidate: fast rotation dominated by one gyro axis
+
+Detection logic:
+- Signals are smoothed and thresholded to find above-threshold runs.
+- Segments are merged if close in time.
+- Composite candidates (e.g., loaded_rotation_phase_candidate) require multiple conditions.
+- Infinite tumble candidates require both sustained rotation and repeated load pulses.
+- Each candidate segment is “enriched” with statistics, dominant axis, damping, and load pulse records.
+
+Intended use:
+- Candidates are for review, labeling, or as ML features—not for direct maneuver classification.
+- See MANEUVER_ANALYSIS.md “Candidate Event Types” and “Metric Reference” for more.
+
+--------------------------------------------------------------------------------
+
 This module intentionally keeps the first analysis layer dependency-free.  It
 extracts accelerometer/gyro samples with ``insv_accelerometer.py``, computes
 derived load and rotation signals, finds coarse candidate maneuver intervals,
@@ -8,6 +39,22 @@ and exports machine-learning feature windows.
 """
 
 from __future__ import annotations
+
+# --- Set fast matplotlib backend early ---
+import os
+import sys
+
+# Use Agg for non-interactive output, or TkAgg for interactive plots if available.
+if "--plot" in sys.argv:
+    try:
+        import matplotlib
+        matplotlib.use("TkAgg")
+    except Exception:
+        import matplotlib
+        matplotlib.use("Agg")
+else:
+    import matplotlib
+    matplotlib.use("Agg")
 
 import argparse
 import csv
@@ -115,8 +162,16 @@ class Segment:
         return self.end - self.start
 
 
+# --- In-memory cache for expensive computations ---
+_motion_samples_cache = {}
+_candidate_segments_cache = {}
+
 def derive_motion_samples(data: AccelerometerData) -> list[MotionSample]:
     """Return samples with vector magnitudes and jerk estimates."""
+    cache_key = getattr(data, "source_path", None)
+    if cache_key in _motion_samples_cache:
+        return _motion_samples_cache[cache_key]
+
     derived: list[MotionSample] = []
     previous = None
     for sample in data.samples:
@@ -146,7 +201,62 @@ def derive_motion_samples(data: AccelerometerData) -> list[MotionSample]:
             jerk_g_s=jerk,
         ))
         previous = sample
+    if cache_key is not None:
+        _motion_samples_cache[cache_key] = derived
     return derived
+
+
+def stabilize_gyro_samples(
+    samples: list[MotionSample],
+    sample_rate_hz: float,
+    *,
+    method: str = 'rolling-mean',
+    window_seconds: float = 2.0,
+    strength: float = 1.0,
+) -> list[MotionSample]:
+    """Return samples with slow gyro bias/drift removed and gyro_norm recomputed."""
+    if not samples:
+        return []
+    if window_seconds <= 0:
+        raise ValueError('gyro stabilizer window must be positive')
+    if not 0 <= strength <= 1:
+        raise ValueError('gyro stabilizer strength must be between 0 and 1')
+
+    gyro_x = [sample.gyro_x for sample in samples]
+    gyro_y = [sample.gyro_y for sample in samples]
+    gyro_z = [sample.gyro_z for sample in samples]
+
+    if method == 'mean':
+        baseline_x = [statistics.fmean(gyro_x) for _ in samples]
+        baseline_y = [statistics.fmean(gyro_y) for _ in samples]
+        baseline_z = [statistics.fmean(gyro_z) for _ in samples]
+    elif method == 'rolling-mean':
+        window_n = max(1, round(sample_rate_hz * window_seconds))
+        baseline_x = _centered_rolling_mean(gyro_x, window_n)
+        baseline_y = _centered_rolling_mean(gyro_y, window_n)
+        baseline_z = _centered_rolling_mean(gyro_z, window_n)
+    else:
+        raise ValueError(f'unknown gyro stabilizer method {method!r}')
+
+    stabilized: list[MotionSample] = []
+    for sample, bx, by, bz in zip(samples, baseline_x, baseline_y, baseline_z):
+        gx = sample.gyro_x - strength * bx
+        gy = sample.gyro_y - strength * by
+        gz = sample.gyro_z - strength * bz
+        stabilized.append(MotionSample(
+            index=sample.index,
+            time=sample.time,
+            accel_x=sample.accel_x,
+            accel_y=sample.accel_y,
+            accel_z=sample.accel_z,
+            gyro_x=gx,
+            gyro_y=gy,
+            gyro_z=gz,
+            g_force=sample.g_force,
+            gyro_norm=_norm3(gx, gy, gz),
+            jerk_g_s=sample.jerk_g_s,
+        ))
+    return stabilized
 
 
 def summarize_motion(data: AccelerometerData, samples: list[MotionSample]) -> dict[str, object]:
@@ -154,11 +264,16 @@ def summarize_motion(data: AccelerometerData, samples: list[MotionSample]) -> di
     g_force = [sample.g_force for sample in samples]
     gyro = [sample.gyro_norm for sample in samples]
     jerk = [sample.jerk_g_s for sample in samples[1:]]
+    duration_seconds = samples[-1].time - samples[0].time if len(samples) > 1 else 0.0
+    sample_rate_hz = _sample_rate_from_times([sample.time for sample in samples]) if len(samples) > 1 else 0.0
     return {
         'source_path': data.source_path,
-        'sample_count': data.sample_count,
-        'duration_seconds': data.duration_seconds,
-        'sample_rate_hz': data.sample_rate_hz,
+        'sample_count': len(samples),
+        'duration_seconds': duration_seconds,
+        'sample_rate_hz': sample_rate_hz,
+        'source_sample_count': data.sample_count,
+        'source_duration_seconds': data.duration_seconds,
+        'source_sample_rate_hz': data.sample_rate_hz,
         'trailer_used_directory_table': data.trailer.used_directory_table,
         'g_force': _stats(g_force),
         'gyro_norm': _stats(gyro),
@@ -179,11 +294,25 @@ def detect_candidate_segments(
     infinite_tumble_min_load_pulses: int = DEFAULT_INFINITE_TUMBLE_MIN_LOAD_PULSES,
     infinite_tumble_context_seconds: float = DEFAULT_INFINITE_TUMBLE_CONTEXT_SECONDS,
 ) -> list[dict[str, object]]:
-    """Detect coarse acro maneuver candidates from load and rotation signals.
+    """Detect coarse acro maneuver candidates from load and rotation signals."""
 
-    These are deliberately conservative *candidate* labels.  They are useful for
-    triage and as a labeling aid, not as final maneuver classifications.
-    """
+    # Build a cache key from the main parameters
+    cache_key = (
+        id(samples),
+        sample_rate_hz,
+        smooth_seconds,
+        min_duration_seconds,
+        merge_gap_seconds,
+        high_g_threshold,
+        rotation_threshold,
+        single_axis_dominance,
+        load_peak_spacing_seconds,
+        infinite_tumble_min_load_pulses,
+        infinite_tumble_context_seconds,
+    )
+    if cache_key in _candidate_segments_cache:
+        return _candidate_segments_cache[cache_key]
+
     if not samples:
         return []
 
@@ -249,7 +378,10 @@ def detect_candidate_segments(
     ))
 
     enriched = [_enrich_segment(segment, samples, load_peak_indices) for segment in segments]
+    # Ensure enriched is a list, not object
+    enriched = cast(list, enriched)
     enriched.sort(key=lambda event: (event['start_seconds'], event['kind']))
+    _candidate_segments_cache[cache_key] = enriched
     return enriched
 
 
@@ -347,7 +479,40 @@ def analyze_file(
     """Read and analyze one INSV file."""
     data = read_accelerometer_timeseries(path)
     samples = derive_motion_samples(data)
+    # Filter by start/end seconds if provided
+    start_sec = args.start_seconds if hasattr(args, "start_seconds") and args.start_seconds is not None else None
+    end_sec = args.end_seconds if hasattr(args, "end_seconds") and args.end_seconds is not None else None
+    if start_sec is not None or end_sec is not None:
+        samples = [
+            s for s in samples
+            if (start_sec is None or s.time >= start_sec) and (end_sec is None or s.time <= end_sec)
+        ]
+        if not samples:
+            print(f"[ERROR] No samples found in the specified time window ({start_sec} to {end_sec} seconds).", file=sys.stderr)
+        else:
+            print(f"[INFO] {len(samples)} samples in time window {start_sec} to {end_sec} seconds.", file=sys.stderr)
+    if args.gyro_stabilize:
+        samples = stabilize_gyro_samples(
+            samples,
+            sample_rate_hz=data.sample_rate_hz,
+            method=args.gyro_stabilizer_method,
+            window_seconds=args.gyro_stabilizer_window_seconds,
+            strength=args.gyro_stabilizer_strength,
+        )
+        print(
+            "[INFO] stabilized gyro data "
+            f"method={args.gyro_stabilizer_method} "
+            f"window={args.gyro_stabilizer_window_seconds:.3f}s "
+            f"strength={args.gyro_stabilizer_strength:.3f}",
+            file=sys.stderr,
+        )
     summary = summarize_motion(data, samples)
+    summary['gyro_stabilizer'] = {
+        'enabled': bool(args.gyro_stabilize),
+        'method': args.gyro_stabilizer_method if args.gyro_stabilize else None,
+        'window_seconds': args.gyro_stabilizer_window_seconds if args.gyro_stabilize else None,
+        'strength': args.gyro_stabilizer_strength if args.gyro_stabilize else None,
+    }
     events = detect_candidate_segments(
         samples=samples,
         sample_rate_hz=data.sample_rate_hz,
@@ -398,15 +563,15 @@ def format_human_summary(results: list[dict[str, object]]) -> str:
     """Return compact text summaries for CLI use."""
     lines: list[str] = []
     for result in results:
-        summary = result['summary']
+        summary = cast(dict, result['summary'])
         lines.append(os.path.basename(str(summary['source_path'])))
         lines.append(
             f"  samples={summary['sample_count']:,} "
             f"duration={summary['duration_seconds']:.3f}s "
             f"rate={summary['sample_rate_hz']:.3f}Hz"
         )
-        g_force = summary['g_force']
-        gyro = summary['gyro_norm']
+        g_force = cast(dict, summary['g_force'])
+        gyro = cast(dict, summary['gyro_norm'])
         lines.append(
             f"  g-force mean={g_force['mean']:.3f} "
             f"p95={g_force['p95']:.3f} max={g_force['max']:.3f}"
@@ -415,19 +580,32 @@ def format_human_summary(results: list[dict[str, object]]) -> str:
             f"  gyro norm mean={gyro['mean']:.3f} "
             f"p95={gyro['p95']:.3f} max={gyro['max']:.3f}"
         )
+        stabilizer = summary.get('gyro_stabilizer')
+        if isinstance(stabilizer, dict) and stabilizer.get('enabled'):
+            lines.append(
+                "  gyro stabilizer="
+                f"{stabilizer.get('method')} "
+                f"window={float(cast(float, stabilizer.get('window_seconds', 0.0))):.3f}s "
+                f"strength={float(cast(float, stabilizer.get('strength', 0.0))):.3f}"
+            )
         lines.append(f"  candidate events={summary['candidate_event_count']}")
-        for event in result['events'][:12]:
+        events = cast(list, result['events'])
+        for event_obj in events[:12]:
+            event = cast(dict, event_obj)
+            g_force = cast(dict, event['g_force'])
+            gyro_norm = cast(dict, event['gyro_norm'])
             lines.append(
                 f"    {event['kind']} "
                 f"{event['start_seconds']:.3f}-{event['end_seconds']:.3f}s "
                 f"dur={event['duration_seconds']:.3f}s "
-                f"max_g={event['g_force']['max']:.3f} "
-                f"max_gyro={event['gyro_norm']['max']:.3f} "
+                f"max_g={g_force['max']:.3f} "
+                f"max_gyro={gyro_norm['max']:.3f} "
                 f"axis={event['dominant_gyro_axis']}"
                 f"{_format_load_pulse_count(event)}"
             )
-        if len(result['events']) > 12:
-            lines.append(f"    ... {len(result['events']) - 12} more")
+        events_len = len(events)
+        if events_len > 12:
+            lines.append(f"    ... {events_len - 12} more")
     return '\n'.join(lines) + '\n'
 
 
@@ -445,8 +623,11 @@ def plot_timeline(
     smooth_seconds: float = 0.10,
     output: Optional[str] = None,
     show: bool = True,
+    plot_cache_dir: Optional[str] = None,
+    plot_cache_bypass: bool = False,
 ) -> None:
-    """Open or save a matplotlib timeline plot for one analyzed file."""
+    """Open or save a matplotlib timeline plot for one analyzed file, with optional persistent image caching."""
+    import hashlib
     os.environ.setdefault(
         'MPLCONFIGDIR',
         os.path.join(os.getcwd(), '.cache', 'matplotlib'),
@@ -455,13 +636,88 @@ def plot_timeline(
         'XDG_CACHE_HOME',
         os.path.join(os.getcwd(), '.cache'),
     )
+
+    # --- Persistent plot/image caching ---
+    cache_dir = plot_cache_dir or os.path.join(os.getcwd(), '.cache', 'plots')
+    # Only use persistent cache for non-interactive (output file) plots
+    use_cache = output and not plot_cache_bypass and not (show and not output)
+    if use_cache:
+        os.makedirs(cache_dir, exist_ok=True)
+        # Compose a cache key from input file, plot params, and code version
+        source_path = str(result.get('summary', {}).get('source_path', ''))
+        # Optionally, use file mtime for cache busting
+        try:
+            file_mtime = str(os.path.getmtime(source_path)) if source_path and os.path.exists(source_path) else ''
+        except Exception:
+            file_mtime = ''
+        try:
+            code_mtime = str(os.path.getmtime(__file__))
+        except Exception:
+            code_mtime = ''
+        # Use git commit hash if available
+        git_hash = ''
+        git_head_path = os.path.join(os.getcwd(), '.git', 'HEAD')
+        if os.path.exists(git_head_path):
+            try:
+                with open(git_head_path, 'r') as f:
+                    ref = f.read().strip()
+                if ref.startswith('ref:'):
+                    ref_path = os.path.join(os.getcwd(), '.git', ref.split(' ')[1])
+                    if os.path.exists(ref_path):
+                        with open(ref_path, 'r') as f:
+                            git_hash = f.read().strip()
+                else:
+                    git_hash = ref
+            except Exception:
+                pass
+        sample_signature = (
+            len(samples),
+            _round(samples[0].time) if samples else None,
+            _round(samples[-1].time) if samples else None,
+            _round(samples[0].gyro_norm) if samples else None,
+            _round(samples[-1].gyro_norm) if samples else None,
+        )
+        summary_for_cache = result.get('summary', {})
+        stabilizer_signature = (
+            summary_for_cache.get('gyro_stabilizer')
+            if isinstance(summary_for_cache, dict) else None
+        )
+        events_signature = tuple(
+            (
+                event.get('kind'),
+                event.get('start_seconds'),
+                event.get('end_seconds'),
+            )
+            for event in result.get('events', [])
+            if isinstance(event, dict)
+        )
+        cache_key_str = repr((
+            source_path,
+            file_mtime,
+            metrics,
+            normalize,
+            max_points,
+            smooth_seconds,
+            output,
+            git_hash,
+            code_mtime,
+            sample_signature,
+            stabilizer_signature,
+            events_signature,
+        ))
+        cache_key = hashlib.sha256(cache_key_str.encode('utf-8')).hexdigest()
+        cache_file = os.path.join(cache_dir, f"{cache_key}.png")
+        if os.path.exists(cache_file):
+            import shutil
+            shutil.copyfile(cache_file, output)
+            # Do NOT display static image for interactive plots; always generate live plot for show=True
+            return
+
     try:
-        import matplotlib
-        if output and not show:
-            matplotlib.use('Agg')
-        import matplotlib.pyplot as plt
+        # Matplotlib already imported and backend set at top
+        from matplotlib import pyplot as plt
         from matplotlib.backend_bases import MouseEvent
-        from matplotlib.patches import Patch, Rectangle
+        from matplotlib.patches import Rectangle
     except ImportError as exc:
         raise RuntimeError(
             'matplotlib is required for --plot; install it with '
@@ -482,23 +738,83 @@ def plot_timeline(
     sample_rate_hz = _sample_rate_from_times(times_all)
     smooth_n = max(1, round(sample_rate_hz * smooth_seconds))
 
-    fig = plt.figure(figsize=(22, 8.5), constrained_layout=True)
+    fig = plt.figure(figsize=(22, 9.6), constrained_layout=True)
     grid = fig.add_gridspec(
+        3,
         2,
-        2,
-        width_ratios=[5.8, 1.45],
-        height_ratios=[4.6, 1.55],
-        hspace=0.08,
+        width_ratios=[5.65, 1.75],
+        height_ratios=[3.25, 0.82, 1.55],
+        hspace=0.025,
         wspace=0.04,
     )
     ax = fig.add_subplot(grid[0, 0])
-    event_ax = fig.add_subplot(grid[1, 0], sharex=ax)
+    # --- New: Pitch/Roll/Yaw subplot ---
+    pry_ax = fig.add_subplot(grid[1, 0], sharex=ax)
+    event_ax = fig.add_subplot(grid[2, 0], sharex=ax)
     key_ax = fig.add_subplot(grid[:, 1])
     key_ax.axis('off')
-    ax.set_title(f"{os.path.basename(str(result['summary']['source_path']))} IMU timeline")
+
+    # --- Set xlim to exact data range (no x padding) ---
+    if len(times) > 1:
+        x_start = times[0]
+        x_end = times[-1]
+        ax.set_xlim(x_start, x_end)
+        pry_ax.set_xlim(x_start, x_end)
+        event_ax.set_xlim(x_start, x_end)
+
+    # --- Plot pitch, roll, yaw rates ---
+    times_all = [sample.time for sample in samples]
+    stride = max(1, math.ceil(len(samples) / max_points))
+    times = times_all[::stride]
+    sample_rate_hz = _sample_rate_from_times(times_all)
+    smooth_n = max(1, round(sample_rate_hz * smooth_seconds))
+    roll = [_sample_signal(sample, "gyro_x") for sample in samples]
+    pitch = [_sample_signal(sample, "gyro_y") for sample in samples]
+    yaw = [_sample_signal(sample, "gyro_z") for sample in samples]
+    if smooth_n > 1:
+        roll = _rolling_mean(roll, smooth_n)
+        pitch = _rolling_mean(pitch, smooth_n)
+        yaw = _rolling_mean(yaw, smooth_n)
+    roll = roll[::stride]
+    pitch = pitch[::stride]
+    yaw = yaw[::stride]
+    pry_ax.plot(times, pitch, color="red", linewidth=1.0, label="Pitch rate (gyro_y)")
+    pry_ax.plot(times, roll, color="blue", linewidth=1.0, label="Roll rate (gyro_x)")
+    pry_ax.plot(times, yaw, color="gold", linewidth=1.0, label="Yaw rate (gyro_z)")
+    pry_ax.set_ylabel("Gyro (device units)")
+    pry_ax.set_xlabel('Time (seconds)')
+    pry_ax.legend(loc="upper right", fontsize=8)
+    pry_ax.grid(True, alpha=0.25)
+    pry_ax.set_title("Pitch, Roll, Yaw Rates")
+    pry_ax.tick_params(axis='y', labelsize=9)
+    summary = cast(dict[str, object], result['summary'])
+    ax.set_title(f"{os.path.basename(str(summary['source_path']))} IMU timeline")
     ax.set_ylabel('Normalized metric value' if normalize else 'Raw metric value')
     ax.grid(True, alpha=0.25)
 
+    # --- Store normalization parameters for g_force for marker alignment ---
+    g_force_norm_params = None
+    g_force_raw = [_sample_signal(sample, "g_force") for sample in samples]
+    g_force_smoothed = _rolling_mean(g_force_raw, smooth_n) if smooth_n > 1 else g_force_raw
+    g_force_smoothed = g_force_smoothed[::stride]
+    if "g_force" in metrics and normalize:
+        # Use the same normalization as the plot for g_force
+        sorted_values = sorted(g_force_smoothed)
+        low = _percentile_sorted(sorted_values, 1)
+        high = _percentile_sorted(sorted_values, 99)
+        if high <= low:
+            low = sorted_values[0]
+            high = sorted_values[-1]
+        padding = 0.05 * (high - low)
+        span_min = low - padding
+        span_max = high + padding
+        g_force_norm_params = (span_min, span_max)
+    else:
+        g_force_norm_params = None
+
+    g_force_plot_times: Optional[list[float]] = None
+    g_force_plot_values: Optional[list[float]] = None
+    g_force_plot_raw_values: Optional[list[float]] = None
     for metric in metrics:
         values = [_sample_signal(sample, metric) for sample in samples]
         if smooth_n > 1:
@@ -517,6 +833,56 @@ def plot_timeline(
             linewidth=1.0,
             label=label,
         )
+        if metric == "g_force":
+            g_force_plot_times = times
+            g_force_plot_values = plotted
+            g_force_plot_raw_values = values
+
+    def _g_force_plot_y(raw_g_force: float) -> float:
+        if normalize and g_force_norm_params is not None:
+            span_min, span_max = g_force_norm_params
+            span = span_max - span_min
+            if span > 0:
+                return (raw_g_force - span_min) / span
+        return raw_g_force
+
+    def _g_force_anchor(
+        target_time: float,
+        fallback_g_force: float,
+        *,
+        prefer_peak: bool,
+    ) -> tuple[float, float, float]:
+        if (
+            g_force_plot_times is None
+            or g_force_plot_values is None
+            or g_force_plot_raw_values is None
+        ):
+            return target_time, _g_force_plot_y(fallback_g_force), fallback_g_force
+        search_radius = DEFAULT_LOAD_PEAK_SPACING_SECONDS
+        candidates = [
+            index for index, time in enumerate(g_force_plot_times)
+            if abs(time - target_time) <= search_radius
+        ]
+        if not candidates:
+            candidates = [min(
+                range(len(g_force_plot_times)),
+                key=lambda index: abs(g_force_plot_times[index] - target_time),
+            )]
+        chooser = max if prefer_peak else min
+        anchor_index = chooser(candidates, key=lambda index: g_force_plot_values[index])
+        return (
+            g_force_plot_times[anchor_index],
+            g_force_plot_values[anchor_index],
+            g_force_plot_raw_values[anchor_index],
+        )
+
+    def _pad_y_axis(plot_ax: Any, fraction: float) -> None:
+        bottom, top = plot_ax.get_ylim()
+        span = top - bottom
+        if span <= 0:
+            span = max(abs(top), 1.0)
+        padding = span * fraction
+        plot_ax.set_ylim(bottom - padding, top + padding)
 
     event_kinds = [
         kind for kind in EVENT_ORDER
@@ -541,6 +907,13 @@ def plot_timeline(
             alpha=0.16,
             linewidth=0,
         )
+        pry_ax.axvspan(
+            float(event['start_seconds']),
+            float(event['end_seconds']),
+            color=color,
+            alpha=0.10,
+            linewidth=0,
+        )
         event_ax.axvspan(
             float(event['start_seconds']),
             float(event['end_seconds']),
@@ -554,21 +927,21 @@ def plot_timeline(
         rect = Rectangle(
             (start, y - 0.36),
             duration,
-            0.72,
+            0.66,
             facecolor=color,
             edgecolor='#111111',
             linewidth=0.6,
             alpha=0.92,
         )
         event_ax.add_patch(rect)
-        short_label = f"{index}. {EVENT_LABELS.get(kind, _short_event_label(kind))}"
+        full_label = f"{index}. {EVENT_LABELS.get(kind, _short_event_label(kind))}"
         text = event_ax.text(
             start + duration / 2,
             y,
-            short_label,
+            full_label,
             ha='center',
             va='center',
-            fontsize=8.5,
+            fontsize=8.0,
             color='white',
             weight='bold',
             clip_on=True,
@@ -577,10 +950,16 @@ def plot_timeline(
         event_boxes.append({
             'rect': rect,
             'text': text,
+            'full_label': full_label,
+            'number_label': str(index),
+            'label_mode': 'hidden',
             'tooltip': _event_bar_label(index, event),
             'center_x': start + duration / 2,
             'center_y': y,
-            'padding_px': 12.0,
+            'font_size': 8.0,
+            'small_font_size': 6.8,
+            'padding_px': 9.0,
+            'number_padding_px': 4.0,
         })
 
         load_pulses = event.get('load_pulses')
@@ -592,54 +971,63 @@ def plot_timeline(
                         continue
                     peak_time = float(pulse.get('seconds_raw', pulse.get('seconds', 0.0)))
                     peak_g = float(pulse.get('g_force_raw', pulse.get('g_force', 0.0)))
-                    ax.scatter(
-                        [peak_time],
-                        [1.02],
-                        marker='v',
-                        color='#111111',
-                        alpha=0.9,
-                        clip_on=False,
-                        transform=ax.get_xaxis_transform(),
-                        zorder=5,
-                    )
-                    ax.text(
+                    valley_time = float(pulse.get('valley_seconds_raw', pulse.get('valley_seconds', peak_time)))
+                    valley_g = float(pulse.get('valley_g_force_raw', pulse.get('valley_g_force', peak_g)))
+
+                    peak_x, peak_y, peak_label_g = _g_force_anchor(
                         peak_time,
-                        1.02,
-                        f"{peak_g:.2f}g",
-                        transform=ax.get_xaxis_transform(),
+                        peak_g,
+                        prefer_peak=True,
+                    )
+                    valley_x, valley_y, valley_label_g = _g_force_anchor(
+                        valley_time,
+                        valley_g,
+                        prefer_peak=False,
+                    )
+
+                    ax.annotate(
+                        f"{peak_label_g:.2f}g",
+                        xy=(peak_x, peak_y),
+                        xytext=(0, 14),
+                        textcoords='offset points',
                         ha='center',
                         va='bottom',
                         fontsize=7.3,
                         color='#111111',
+                        arrowprops={
+                            'arrowstyle': '-',
+                            'color': '#111111',
+                            'linewidth': 0.8,
+                            'shrinkA': 1.5,
+                            'shrinkB': 0,
+                        },
                         bbox={'boxstyle': 'round,pad=0.18', 'fc': '#ffffff', 'ec': 'none', 'alpha': 0.85},
                         clip_on=False,
                     )
 
-                    valley_time = float(pulse.get('valley_seconds_raw', pulse.get('valley_seconds', peak_time)))
-                    valley_g = float(pulse.get('valley_g_force_raw', pulse.get('valley_g_force', peak_g)))
-                    ax.scatter(
-                        [valley_time],
-                        [0.02],
-                        marker='^',
-                        color='#111111',
-                        alpha=0.75,
-                        clip_on=False,
-                        transform=ax.get_xaxis_transform(),
-                        zorder=5,
-                    )
-                    ax.text(
-                        valley_time,
-                        0.02,
-                        f"{valley_g:.2f}g",
-                        transform=ax.get_xaxis_transform(),
+                    ax.annotate(
+                        f"{valley_label_g:.2f}g",
+                        xy=(valley_x, valley_y),
+                        xytext=(0, -14),
+                        textcoords='offset points',
                         ha='center',
                         va='top',
                         fontsize=7.0,
                         color='#111111',
+                        arrowprops={
+                            'arrowstyle': '-',
+                            'color': '#111111',
+                            'linewidth': 0.8,
+                            'shrinkA': 1.5,
+                            'shrinkB': 0,
+                        },
                         bbox={'boxstyle': 'round,pad=0.18', 'fc': '#ffffff', 'ec': 'none', 'alpha': 0.8},
                         clip_on=False,
                     )
         key_rows.append((index, event, color))
+
+    _pad_y_axis(ax, 0.24)
+    _pad_y_axis(pry_ax, 0.18)
 
     handles, labels = ax.get_legend_handles_labels()
     ax.legend(handles, labels, loc='upper right', fontsize=8)
@@ -648,7 +1036,6 @@ def plot_timeline(
         EVENT_LABELS.get(kind, kind.replace('_candidate', '').replace('_', ' '))
         for kind in reversed(event_kinds)
     ])
-    event_ax.set_xlabel('Time (seconds)')
     event_ax.set_ylabel('Candidates')
     event_ax.grid(True, axis='x', alpha=0.25)
     event_ax.set_ylim(-0.75, max(lane_for_kind.values(), default=0) + 0.75)
@@ -686,14 +1073,58 @@ def plot_timeline(
                 x0, _ = event_ax.transData.transform((left, 0.0))
                 x1, _ = event_ax.transData.transform((left + width, 0.0))
                 pixel_width = abs(x1 - x0)
-                previous = text_artist.get_visible()
+                previous_visible = text_artist.get_visible()
+                previous_text = text_artist.get_text()
+                previous_fontsize = text_artist.get_fontsize()
+                full_font_size = float(box.get('font_size', 8.0))
+                small_font_size = float(box.get('small_font_size', 6.8))
                 text_artist.set_visible(True)
+                text_artist.set_fontsize(full_font_size)
+                text_artist.set_text(str(box['full_label']))
                 bbox = text_artist.get_window_extent(renderer=renderer)
-                text_width = bbox.width + float(box.get('padding_px', 0.0))
-                text_artist.set_visible(previous)
-                visible = pixel_width >= text_width and width > 0
-                if visible != previous:
-                    text_artist.set_visible(visible)
+                full_text_width = bbox.width + float(box.get('padding_px', 0.0))
+                text_artist.set_fontsize(small_font_size)
+                bbox = text_artist.get_window_extent(renderer=renderer)
+                small_full_text_width = bbox.width + float(box.get('padding_px', 0.0))
+                text_artist.set_fontsize(full_font_size)
+                text_artist.set_text(str(box['number_label']))
+                bbox = text_artist.get_window_extent(renderer=renderer)
+                number_text_width = bbox.width + float(box.get('number_padding_px', 0.0))
+                if width <= 0:
+                    next_text = str(box['full_label'])
+                    next_font_size = full_font_size
+                    next_visible = False
+                    label_mode = 'hidden'
+                elif pixel_width >= full_text_width:
+                    next_text = str(box['full_label'])
+                    next_font_size = full_font_size
+                    next_visible = True
+                    label_mode = 'full'
+                elif pixel_width >= small_full_text_width:
+                    next_text = str(box['full_label'])
+                    next_font_size = small_font_size
+                    next_visible = True
+                    label_mode = 'full-small'
+                elif pixel_width >= number_text_width:
+                    next_text = str(box['number_label'])
+                    next_font_size = full_font_size
+                    next_visible = True
+                    label_mode = 'number'
+                else:
+                    next_text = str(box['number_label'])
+                    next_font_size = full_font_size
+                    next_visible = False
+                    label_mode = 'hidden'
+                text_artist.set_text(next_text)
+                text_artist.set_fontsize(next_font_size)
+                text_artist.set_visible(next_visible)
+                if (
+                    next_visible != previous_visible
+                    or next_text != previous_text
+                    or next_font_size != previous_fontsize
+                    or box.get('label_mode') != label_mode
+                ):
+                    box['label_mode'] = label_mode
                     changed = True
             if changed:
                 event_ax.figure.canvas.draw_idle()
@@ -715,7 +1146,7 @@ def plot_timeline(
                 rect = cast(Rectangle, box['rect'])
                 contains, _ = rect.contains(event)
                 if contains:
-                    if box['text'].get_visible():
+                    if box.get('label_mode') == 'full':
                         _maybe_hide_annotation()
                         return
                     hover_annotation.xy = (box['center_x'], box['center_y'])
@@ -735,6 +1166,10 @@ def plot_timeline(
 
     if output:
         fig.savefig(output, dpi=160)
+        # Save to persistent cache if enabled
+        if not plot_cache_bypass and 'cache_file' in locals():
+            import shutil
+            shutil.copyfile(output, cache_file)
     if show:
         plt.show()
     else:
@@ -888,7 +1323,7 @@ def _enrich_segment(
 ) -> dict[str, object]:
     window = samples[segment.sample_start:segment.sample_end + 1]
     axes = _dominant_gyro_axis(window)
-    event = {
+    event: dict[str, object] = {
         'kind': segment.kind,
         'start_seconds': _round(segment.start),
         'end_seconds': _round(segment.end),
@@ -905,7 +1340,7 @@ def _enrich_segment(
         'damping': estimate_damping(window),
     }
     pulse_indices = [
-        index for index in (load_peak_indices or [])
+        int(index) for index in (load_peak_indices or [])
         if segment.sample_start <= index <= segment.sample_end
     ]
     if pulse_indices:
@@ -915,17 +1350,17 @@ def _enrich_segment(
             sample_start=segment.sample_start,
             sample_end=segment.sample_end,
         )
-        pulse_times = [record['seconds'] for record in pulse_records]
-        pulse_g = [record['g_force'] for record in pulse_records]
+        from typing import cast
+        pulse_times = [float(cast(float, record['seconds'])) for record in pulse_records]
+        pulse_g = [float(cast(float, record['g_force'])) for record in pulse_records]
         event['load_pulses'] = {
             'count': len(pulse_records),
             'peaks': pulse_records,
             'peak_seconds': [_round(time) for time in pulse_times],
             'peak_g': [_round(value) for value in pulse_g],
-            'max_peak_g': _round(max(pulse_g)),
+            'max_peak_g': _round(max(pulse_g) if pulse_g else 0.0),
             'median_period_seconds': (
-                _round(_median_delta(pulse_times))
-                if len(pulse_times) > 1 else None
+                _round(_median_delta(pulse_times)) if len(pulse_times) > 1 and _median_delta(pulse_times) is not None else None
             ),
             'interpretation': (
                 'candidate bottom-of-rotation load pulses; in infinite '
@@ -972,9 +1407,10 @@ def _window_features(window: list[MotionSample]) -> dict[str, object]:
     ):
         means = [abs(float(row[f'{axis}_mean'])) for axis in axes]
         total = sum(means)
-        dominant_index = means.index(max(means)) if means else 0
+        dominant_value = max(means) if means else 0.0
+        dominant_index = means.index(dominant_value) if means else 0
         row[f'{prefix}_dominant_axis'] = axes[dominant_index][-1]
-        row[f'{prefix}_axis_dominance'] = _round(max(means) / total) if total else 0.0
+        row[f'{prefix}_axis_dominance'] = _round(dominant_value / total) if total else 0.0
 
     row['gyro_sign_changes_x'] = _sign_changes([sample.gyro_x for sample in window])
     row['gyro_sign_changes_y'] = _sign_changes([sample.gyro_y for sample in window])
@@ -985,13 +1421,13 @@ def _window_features(window: list[MotionSample]) -> dict[str, object]:
 def _dominant_gyro_axis(window: list[MotionSample]) -> dict[str, object]:
     if not window:
         return {'axis': '', 'dominance': 0.0, 'mean_abs': 0.0}
-    means = {
+    means: dict[str, float] = {
         'x': statistics.fmean(abs(sample.gyro_x) for sample in window),
         'y': statistics.fmean(abs(sample.gyro_y) for sample in window),
         'z': statistics.fmean(abs(sample.gyro_z) for sample in window),
     }
     total = sum(means.values())
-    axis = max(means, key=means.get)
+    axis = max(means, key=lambda k: means[k])
     return {
         'axis': axis,
         'dominance': _round(means[axis] / total) if total else 0.0,
@@ -1054,9 +1490,18 @@ def _event_bar_label(index: int, event: dict[str, object]) -> str:
     return f'{index}. {label} {start:.1f}-{end:.1f}s{pulses}'
 
 
-def _draw_candidate_key(key_ax: object, rows: list[tuple[int, dict[str, object], str]]) -> None:
+def _draw_candidate_key(key_ax, rows: list[tuple[int, dict[str, object], str]]) -> None:
     from matplotlib.patches import Rectangle
 
+    # Table column widths (fraction of axes width)
+    swatch_height = 0.027
+    key_font_size = 7.8
+    axes_box = key_ax.get_position()
+    fig_width, fig_height = key_ax.figure.get_size_inches()
+    axes_width = max(axes_box.width * fig_width, 1e-9)
+    axes_height = max(axes_box.height * fig_height, 1e-9)
+    swatch_width = swatch_height * axes_height / axes_width
+    col_x = [0.0, swatch_width + 0.016, 0.64, 0.87]
     key_ax.text(
         0.0,
         1.0,
@@ -1067,8 +1512,15 @@ def _draw_candidate_key(key_ax: object, rows: list[tuple[int, dict[str, object],
         fontsize=12,
         weight='bold',
     )
-    y = 0.955
-    row_gap = 0.067
+    # Table header
+    y = 0.97
+    row_gap = 0.052
+    key_ax.text(col_x[0], y, "#", transform=key_ax.transAxes, ha='left', va='top', fontsize=key_font_size, fontfamily="monospace", weight="bold")
+    key_ax.text(col_x[1], y, "Type", transform=key_ax.transAxes, ha='left', va='top', fontsize=key_font_size, fontfamily="monospace", weight="bold")
+    key_ax.text(col_x[2], y, "Time (s)", transform=key_ax.transAxes, ha='left', va='top', fontsize=key_font_size, fontfamily="monospace", weight="bold")
+    key_ax.text(col_x[3], y, "Pulses", transform=key_ax.transAxes, ha='left', va='top', fontsize=key_font_size, fontfamily="monospace", weight="bold")
+    y -= row_gap * 0.9
+
     for index, event, color in rows:
         if y < 0.02:
             key_ax.text(
@@ -1084,35 +1536,41 @@ def _draw_candidate_key(key_ax: object, rows: list[tuple[int, dict[str, object],
             break
         key_ax.add_patch(
             Rectangle(
-                (0.0, y - 0.026),
-                0.035,
-                0.028,
+                (col_x[0], y - swatch_height),
+                swatch_width,
+                swatch_height,
                 transform=key_ax.transAxes,
                 facecolor=color,
                 edgecolor='#111111',
                 linewidth=0.5,
             )
         )
-        key_ax.text(
-            0.045,
-            y,
-            _event_bar_label(index, event),
-            transform=key_ax.transAxes,
-            ha='left',
-            va='top',
-            fontsize=8.5,
-            weight='bold' if event['kind'] == 'infinite_tumble_candidate' else 'normal',
-            color='#202020',
-            wrap=True,
-        )
+        kind = event.get('kind', '')
+        weight = 'bold' if kind == 'infinite_tumble_candidate' else 'normal'
+        # Table columns: index, type, time, pulses
+        label = EVENT_LABELS.get(kind, kind.replace('_candidate', '').replace('_', ' '))
+        t_start = event.get('start_seconds', "")
+        t_end = event.get('end_seconds', "")
+        time_str = f"{t_start:.1f}-{t_end:.1f}" if isinstance(t_start, (float, int)) and isinstance(t_end, (float, int)) else ""
+        pulses = ""
+        load_pulses = event.get('load_pulses')
+        if isinstance(load_pulses, dict) and load_pulses.get('count'):
+            pulses = str(load_pulses['count'])
+        key_ax.text(col_x[0] + swatch_width / 2, y - swatch_height / 2, str(index), transform=key_ax.transAxes, ha='center', va='center', fontsize=7.2, fontfamily="monospace", weight='bold', color='#ffffff')
+        key_ax.text(col_x[1], y, label, transform=key_ax.transAxes, ha='left', va='top', fontsize=key_font_size, fontfamily="monospace", weight=weight, color='#202020')
+        key_ax.text(col_x[2], y, time_str, transform=key_ax.transAxes, ha='left', va='top', fontsize=key_font_size, fontfamily="monospace", color='#202020')
+        key_ax.text(col_x[3], y, pulses, transform=key_ax.transAxes, ha='left', va='top', fontsize=key_font_size, fontfamily="monospace", color='#202020')
         y -= row_gap
 
 
 def _format_load_pulse_count(event: dict[str, object]) -> str:
     load_pulses = event.get('load_pulses')
     if not isinstance(load_pulses, dict):
-        return ''
-    count = load_pulses.get('count')
+        try:
+            load_pulses = cast(dict, load_pulses)
+        except Exception:
+            return ''
+    count = load_pulses.get('count') if isinstance(load_pulses, dict) else None
     if not count:
         return ''
     return f' load_pulses={count}'
@@ -1218,6 +1676,21 @@ def _rolling_mean(values: list[float], window_size: int) -> list[float]:
         if len(queue) > window_size:
             total -= queue.pop(0)
         result.append(total / len(queue))
+    return result
+
+
+def _centered_rolling_mean(values: list[float], window_size: int) -> list[float]:
+    if window_size <= 1 or not values:
+        return list(values)
+    radius = max(0, window_size // 2)
+    prefix = [0.0]
+    for value in values:
+        prefix.append(prefix[-1] + value)
+    result: list[float] = []
+    for index in range(len(values)):
+        start = max(0, index - radius)
+        end = min(len(values), index + radius + 1)
+        result.append((prefix[end] - prefix[start]) / (end - start))
     return result
 
 
@@ -1362,6 +1835,31 @@ def _parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     )
     parser.add_argument('--damping-peak-spacing', type=float, default=0.35)
     parser.add_argument('--damping-min-amplitude', type=float, default=0.08)
+    parser.add_argument(
+        '--gyro-stabilize',
+        action='store_true',
+        help='Apply optional gyro stabilization before summaries, detection, features, and plots',
+    )
+    parser.add_argument(
+        '--gyro-stabilizer-method',
+        choices=['rolling-mean', 'mean'],
+        default='rolling-mean',
+        help='Gyro stabilization baseline method',
+    )
+    parser.add_argument(
+        '--gyro-stabilizer-window-seconds',
+        type=float,
+        default=2.0,
+        help='Rolling baseline window for --gyro-stabilize',
+    )
+    parser.add_argument(
+        '--gyro-stabilizer-strength',
+        type=float,
+        default=1.0,
+        help='Fraction of estimated gyro baseline to remove, from 0 to 1',
+    )
+    parser.add_argument('--start-seconds', type=float, default=None, help='Start time (seconds) for analysis window')
+    parser.add_argument('--end-seconds', type=float, default=None, help='End time (seconds) for analysis window')
     return parser.parse_args(argv)
 
 
