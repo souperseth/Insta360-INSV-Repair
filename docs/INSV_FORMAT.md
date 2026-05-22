@@ -5,11 +5,12 @@ recordings in this repository. `.insv` is not a wholly separate container
 format; it is an ISO Base Media File Format / QuickTime-style file with an
 Insta360 extension and a proprietary trailer.
 
-The files in `sample_insvs_x3/` identify themselves in the Insta360 maker-notes
+The files in `../sample_insvs_x3/` identify themselves in the Insta360 maker-notes
 trailer as `Insta360 X3`, firmware `v1.1.6_build1`, serial `IAQEB2309KKK7Y`.
-The files in `sample_insvs_x4/` identify themselves as `Insta360 X4`, firmware
+The files in `../sample_insvs_x4/` identify themselves as `Insta360 X4`, firmware
 `v1.9.21_build5`, serial `IBMEA2405YQG84`. See
-`X3_X4_FORMAT_COMPARISON.md` for a focused comparison of those two sample sets.
+[research/X3_X4_FORMAT_COMPARISON.md](research/X3_X4_FORMAT_COMPARISON.md) for
+a focused comparison of those two sample sets.
 
 ## High-Level Layout
 
@@ -48,7 +49,7 @@ sample files observed here use:
 - major brand: `avc1`
 - compatible brands: `avc1`, `isom`
 
-The X3-labeled files in `sample_insvs_x3/` contain a single `avc1`/H.264 video
+The X3-labeled files in `../sample_insvs_x3/` contain a single `avc1`/H.264 video
 track at 3840x1920 plus AAC audio. Earlier X4 repair notes in this repository
 describe dual-lens HEVC samples with `hvc1` sample entries. Do not assume the
 video track layout from the trailer IMU layout alone.
@@ -125,7 +126,7 @@ The trailer should normally be walked from the end toward the beginning. Start
 previous record footer. ExifTool uses the same backward scan in
 `QuickTimeStream.pl`.
 
-The `sample_insvs_x3/` files all contain the same record IDs, in this backward
+The `../sample_insvs_x3/` files all contain the same record IDs, in this backward
 scan order:
 
 | Record ID | Observed meaning |
@@ -194,7 +195,7 @@ double little-endian gyro_z
 
 That form is 56 bytes per sample. ExifTool chooses between the 20-byte and
 56-byte forms by record length and, when ambiguous, by checking whether bytes
-16-18 of the first sample are all zero. The `sample_insvs_x3/` files are all
+16-18 of the first sample are all zero. The `../sample_insvs_x3/` files are all
 20-byte records.
 
 Observed `0x300` statistics:

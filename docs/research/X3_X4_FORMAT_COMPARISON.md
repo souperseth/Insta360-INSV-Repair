@@ -1,13 +1,13 @@
 # Insta360 X3 vs X4 INSV Format Comparison
 
-This report compares the X3 `.insv` files currently in `sample_insvs_x3/`
-against the X4 `.insv` files currently in `sample_insvs_x4/`.
+This report compares the X3 `.insv` files currently in `../sample_insvs_x3/`
+against the X4 `.insv` files currently in `../sample_insvs_x4/`.
 
 Both sides were re-examined directly from the local sample files with ExifTool
 13.55, `ffprobe`, and a binary MP4/trailer walk.
 
 For the deeper accelerometer-only pass, see
-`X4_ACCELEROMETER_INVESTIGATION.md`.
+[X4_ACCELEROMETER_INVESTIGATION.md](X4_ACCELEROMETER_INVESTIGATION.md).
 
 ## Executive Summary
 

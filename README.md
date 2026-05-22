@@ -19,6 +19,18 @@ should have been the final metadata/trailer.
 - Optional: [FFmpeg](https://ffmpeg.org/) (`ffprobe`) for output verification
 - Optional: [ExifTool](https://exiftool.org/) for inspecting QuickTime boxes and trailer warnings
 
+## Project Layout
+
+- `src/insv_tools/`: implementation modules for accelerometer extraction, maneuver analysis, and repair.
+- `insv_accelerometer.py`, `insv_maneuver_analysis.py`, `insv_repair.py`: root compatibility launchers.
+- `docs/`: user guides, internal references, and format documentation.
+- `docs/research/`: investigation reports and sample-set comparisons.
+- `patterns/`: hex/editor patterns for inspecting INSV files.
+- `pg-reference-docs/`: external paragliding/aero reference documents.
+- `scripts/`: small developer/inspection helpers.
+- `../sample_insvs_x3/`, `../sample_insvs_x4/`: local sample data.
+- `analysis_outputs/`: generated summaries, plots, and feature files.
+
 ## Usage
 
 ### Extract accelerometer / IMU data
@@ -26,7 +38,7 @@ should have been the final metadata/trailer.
 Programmatic API:
 
 ```python
-from insv_accelerometer import read_accelerometer_timeseries
+from insv_tools.accelerometer import read_accelerometer_timeseries
 
 imu = read_accelerometer_timeseries("video.insv")
 
@@ -53,7 +65,7 @@ intervals, and machine-learning-ready sliding-window features:
 
 ```bash
 python3 insv_maneuver_analysis.py \
-  sample_insvs_x4/infinite_and_helis.insv \
+  ../sample_insvs_x4/infinite_and_helis.insv \
   --summary \
   --summary-output analysis_outputs/infinite_and_helis_summary.txt \
   --events analysis_outputs/infinite_and_helis_events.json \
@@ -66,14 +78,15 @@ intervals, run from a Python environment with `matplotlib` installed:
 ```bash
 python3 -m pip install -r requirements.txt
 python3 insv_maneuver_analysis.py \
-  sample_insvs_x4/infinite_and_helis.insv \
+  ../sample_insvs_x4/infinite_and_helis.insv \
   --summary-output analysis_outputs/infinite_and_helis_summary.txt \
   --plot
 ```
 
 The analyzer is a first-pass labeling aid, not a final classifier.  See
-[MANEUVER_ANALYSIS.md](MANEUVER_ANALYSIS.md) for the sensor-frame caveats,
-candidate event definitions, and labeling workflow.
+[docs/MANEUVER_ANALYSIS_USAGE.md](docs/MANEUVER_ANALYSIS_USAGE.md) for commands
+and labeling workflow, and [docs/MANEUVER_ANALYSIS.md](docs/MANEUVER_ANALYSIS.md)
+for functionality, variables, and algorithms.
 
 ### Diagnose a file (no repair)
 
@@ -158,8 +171,9 @@ Observed good X4 files in this repo use:
   normal MP4 box.
 
 More detailed implementation notes are in
-[INSV_REPAIR_NOTES.md](INSV_REPAIR_NOTES.md). A standalone description of the
-observed X4 container is in [INSV_FORMAT.md](INSV_FORMAT.md).
+[docs/INSV_REPAIR_NOTES.md](docs/INSV_REPAIR_NOTES.md). A standalone
+description of the observed X4 container is in
+[docs/INSV_FORMAT.md](docs/INSV_FORMAT.md).
 
 ## Validation
 

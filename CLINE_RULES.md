@@ -20,12 +20,14 @@ These rules apply to all Cline-assisted work in this repository.
 
 - All public functions, classes, and modules must have docstrings.
 - Use triple-double-quote (`"""`) docstrings.
-- Update `MANEUVER_ANALYSIS.md` or `README.md` when adding user-facing features or CLI flags.
+- Update `docs/MANEUVER_ANALYSIS_USAGE.md`, `docs/MANEUVER_ANALYSIS.md`, or
+  `README.md` when adding user-facing features or CLI flags.
 - Keep inline comments concise; prefer self-documenting names over comments.
 
 ## Dependencies
 
-- The core analysis layer (`insv_accelerometer.py`, `insv_maneuver_analysis.py`, `insv_repair.py`) must remain **dependency-free** (stdlib only + local project imports).
+- The core implementation modules in `src/insv_tools/` must remain
+  **dependency-free** (stdlib only + local project imports).
 - `matplotlib` and `numpy` are **optional** — only imported inside plotting/visualization code paths.
 - Do **not** introduce new third-party dependencies without explicit user approval.
 
@@ -37,14 +39,15 @@ These rules apply to all Cline-assisted work in this repository.
 
 ## File & Directory Policy
 
-- Do **not** modify files in `pg-reference/`.
+- Do **not** modify files in `pg-reference-docs/`.
 - Do **not** commit sample `.insv` files or large binary outputs to the repo.
 - Keep `.gitignore` up to date when adding new generated output directories.
 
 ## CLI
 
 - All CLI tools must support `--help` with descriptive argument help text.
-- New CLI flags must have sensible defaults and be documented in `MANEUVER_ANALYSIS.md`.
+- New CLI flags must have sensible defaults and be documented in
+  `docs/MANEUVER_ANALYSIS_USAGE.md` or `docs/MANEUVER_ANALYSIS.md`.
 - Prefer non-interactive CLI behavior (flags over prompts).
 
 ## Code Changes

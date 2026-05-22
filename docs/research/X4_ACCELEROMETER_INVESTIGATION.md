@@ -1,8 +1,8 @@
 # Insta360 X4 Accelerometer Investigation
 
 This report documents the accelerometer and angular-velocity data observed in
-the X4 files in `sample_insvs_x4/`, then compares those findings with the X3
-files in `sample_insvs_x3/`.
+the X4 files in `../sample_insvs_x4/`, then compares those findings with the X3
+files in `../sample_insvs_x3/`.
 
 The investigation used ExifTool 13.55, `ffprobe`, and direct binary parsing of
 the Insta360 trailer records.
