@@ -1,0 +1,736 @@
+<!DOCTYPE doctype PUBLIC "-//w3c//dtd html 4.0 transitional//en">
+<!-- saved from url=(0065)https://www.laboratoridenvol.com/paragliderdesign/airfoils.html#2 -->
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=windows-1252">
+
+
+  
+  <meta name="GENERATOR" content="Mozilla/4.75 [en] (X11; U; Linux 2.2.17 i586) [Netscape]"><title>Airfoils</title>
+  
+  <meta name="author" content="Laboratori d&#39;envol"><style>:is([id*='google_ads_iframe'],[id*='taboola-'],.taboolaHeight,.taboola-placeholder,#top-ad,#credential_picker_container,#credentials-picker-container,#credential_picker_iframe,[id*='google-one-tap-iframe'],#google-one-tap-popup-container,.google-one-tap__module,.google-one-tap-modal-div,#amp_floatingAdDiv,#ez-content-blocker-container) {display:none!important;min-height:0!important;height:0!important;}</style></head><body alink="#ff0000" bgcolor="#c0c0c0" link="#3333ff" text="#000000" vlink="#cc33cc">
+<center><font size="+3"><tt><font color="#009900"><b><img style="width: 506px; height: 82px;" src="./Airfoils_files/le-ge.png" alt="le"> <br>
+<span style="color: rgb(51, 51, 255);">PARAGLIDER DESIGN HANDBOOK</span><br style="color: rgb(51, 51, 255);">
+<span style="color: rgb(51, 51, 255);">CHAPTER 2. AEROFOILS</span><br>
+</b><small><font color="#000000"></font></small></font></tt></font></center>
+<div align="justify">
+<center></center>
+</div>
+<span style="font-weight: bold;"><a href="https://www.laboratoridenvol.com/paragliderdesign/airfoils.html#1">2.1
+Introduction</a><br>
+<a href="https://www.laboratoridenvol.com/paragliderdesign/airfoils.html#2">2.2 Cylinder in an airflow</a><br>
+</span><span style="font-weight: bold;"><a href="https://www.laboratoridenvol.com/paragliderdesign/airfoils.html#3">2.3
+Joukowsky transformation</a></span><span style="font-weight: bold;"></span><span style="font-weight: bold;"></span><span style="font-weight: bold;"><br>
+</span><span style="font-weight: bold;"><a href="https://www.laboratoridenvol.com/paragliderdesign/airfoils.html#4">2.4
+Airfoil geometry and parameters</a><br>
+<a href="https://www.laboratoridenvol.com/paragliderdesign/airfoils.html#5">2.5 Aerodynamic forces</a><br>
+<a href="https://www.laboratoridenvol.com/paragliderdesign/airfoils.html#6">2.6 NACA profiles</a><br>
+<a href="https://www.laboratoridenvol.com/paragliderdesign/airfoils.html#7">2.7 Paraglider airfoils</a><br>
+<a href="https://www.laboratoridenvol.com/paragliderdesign/airfoils.html#8">2.8 XFOIL program</a><br>
+<a href="https://www.laboratoridenvol.com/paragliderdesign/airfoils.html#9">2.9 XFLR5 program</a><br>
+<a href="https://www.laboratoridenvol.com/paragliderdesign/airfoils.html#10">2.10 AIrfoil fitting</a><br>
+</span><br>
+<span style="font-weight: bold;"><a name="1"></a>2.1 Introduction</span><br>
+<br>
+<div style="text-align: justify;">It is a fact of common experience
+that a body in motion throught a fluid experiences a resultant force.
+In most cases, is mainly a resistence to the motion. In the case of an
+aerofoil the resultant force normal to the direction of motion is many
+times grater than the component resisting the motion. The possibility
+of the flight of the paraglider depends on the use of an aerofoil for
+the wing structure.<br>
+</div>
+<span style="font-weight: bold;"><br>
+<a name="2"></a>2.2. Cylinder in an airflow</span><br>
+<br>
+(...)<br>
+<br>
+<span style="font-weight: bold;"><a name="3"></a>2.3. Joukowsky
+transformation<br>
+<br>
+</span>The Joukowsky transformation converts a circle in an airfoil
+section. Explained <a href="https://www.laboratoridenvol.com/info/joukowsky/joukowsky.en.html">here.<br>
+</a>
+<span style="font-weight: bold;"><br>
+<a name="4"></a>2.4 Airfoil geometry and parameters<br>
+</span><br>
+<span style="color: rgb(0, 0, 0);"></span>Airfoil geometry can be
+characterized by the coordinates (x,y) of the upper and
+lower surface, and the following:<span id="result_box" class="short_text"><span style="background-color: rgb(255, 255, 255);" title="los siguientes elementos"></span></span><br>
+<br>
+<div style="margin-left: 40px;">- Leading edge<br>
+- Trailing edge<br>
+- Extrados<br>
+- Intrados<br>
+- Chord: line joining the centres of curvature of the leading anf
+trailing edges.<br>
+- Mean or camber line<br>
+</div>
+<br>
+Geometric parameters that summarize the airfoil:<br>
+<br>
+<div style="margin-left: 40px;">- maximum
+thickness (% of chord)<br>
+- position of max thickness (% of chord)<br>
+- maximum camber (% of chord)<br>
+- position of max camber (% of chord)<br>
+- nose radius<br>
+- trailing edge angle<br>
+</div>
+<br>
+<img style="width: 846px; height: 253px;" alt="" src="./Airfoils_files/airfoil_geometry.png"><br>
+Fig. 2.1. Airfoil geometry<br>
+<br>
+<br>
+<span style="font-weight: bold;"><a name="5"></a>2.5 Aerodynamic forces</span><small><br>
+<br>
+</small>Angle of incidence: <span style="font-style: italic;">alpha</span>
+defined as the angle between the chord and the direction of motion
+relative to the fluid<br>
+<br>
+<span style="font-weight: bold;">Resultant aerodynamic force</span>:
+resultant of the pressure distribution<br>
+<br>
+<div style="margin-left: 40px;">The line of action of the resultant
+aerodynamic force intersects the chord in a point <span style="font-style: italic;">CP <span style="font-weight: bold;">center
+of pressure</span></span><br>
+</div>
+<br>
+<div style="margin-left: 40px;">The resultant force is resolved into
+two components:<br>
+</div>
+<br>
+<div style="margin-left: 40px;">The <span style="font-style: italic;">Lift
+L</span> at right angle to the direction of motion<br>
+The <span style="font-style: italic;">Drag D</span> parallel to
+direction of motion but opposing<br>
+</div>
+<br>
+<span style="font-weight: bold;">Resultant moment</span><br>
+<br>
+Its value depends of the reference point for moments. The sense is such
+that a positive moment tends to increase the angle of incidence. Using
+the leading edge A as a point of reference for moments the magnitude is:<br>
+<br>
+<span style="font-style: italic;">M(A) = -CP · (L cos (alpha) +
+D sin (alpha))<br>
+<br>
+</span>where <span style="font-style: italic;">CP</span> is the
+distance of the centre of pressure behind the leading edge of the chord<br>
+<br>
+<span id="result_box" class="long_text" lang="en"><span title="Feu clic per obtenir traduccions alternatives" class="hps">It</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">can
+be shown</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">that</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">there
+is</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">a</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">point</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">on
+the chord</span><span class="" title="Feu clic per obtenir traduccions alternatives">,</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">for</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">which</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">the</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">aerodynamic
+moment </span><span title="Feu clic per obtenir traduccions alternatives" class="hps">does
+not vary</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">with
+the</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">angle</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">of</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">incidence</span><span class="" title="Feu clic per obtenir traduccions alternatives">.</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">dM/d<span style="font-style: italic;">alpha</span>=0 This</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">point</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">is</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">called
+the</span> <span style="font-style: italic; font-weight: bold;" title="Feu clic per obtenir traduccions alternatives" class="hps">aerodynamic
+center</span><span style="font-style: italic;"> </span><span title="Feu clic per obtenir traduccions alternatives" class="hps"><span style="font-style: italic;">AC</span> and has been</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">found</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">experimentally</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">and</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">theoretically</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">that</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">is
+within</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">a
+quarter</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">of</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">the
+chord from</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">the</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">edge.<br>
+<br>
+Then assuming <span style="font-style: italic;">CP=AC+(CP-AC) = AC +
+e&nbsp; ( e = </span></span></span><span id="result_box" class="long_text" lang="en"><span title="Feu clic per obtenir traduccions alternatives" class="hps">distance</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">between</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">the
+aerodynamic center</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">and
+center</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">of</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">pressure</span><span class="" title="Feu clic per obtenir traduccions alternatives"> )<br>
+<br>
+</span></span><span id="result_box" class="long_text" lang="en"><span title="Feu clic per obtenir traduccions alternatives" class="hps">For</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">small</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">alpha</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">values</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">&#8203;
+&#8203;and</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">assuming</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">L</span><span class="" title="Feu clic per obtenir traduccions alternatives">&gt;</span><span class="" title="Feu clic per obtenir traduccions alternatives">&gt;</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">D</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">can</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">be</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">simplified</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">as
+follows</span><span class="" title="Feu clic per obtenir traduccions alternatives">:<br>
+<br>
+</span></span><span style="font-style: italic;">M(A) = -CP ·
+L&nbsp; or<br>
+<br>
+</span><span style="font-style: italic;">M(A) = -(AC + e) · L =
+-AC · L - e · L</span><br>
+<span id="result_box" class="long_text" lang="en"><span class="" title="Feu clic per obtenir traduccions alternatives"><br>
+</span></span>By unitary chord AC=1/4 then <span style="font-style: italic;"><br>
+<br>
+M(A) = - e · L - L/4<br>
+<br>
+M(A) = M(AC) - L/4<br>
+</span><span id="result_box" class="long_text" lang="en"><span class="" title="Feu clic per obtenir traduccions alternatives"></span></span><span id="result_box" class="long_text" lang="en"><span title="Feu clic per obtenir traduccions alternatives" class="hps"><span style="font-style: italic;"></span><br>
+<span style="font-style: italic;">M(AC)</span> =</span></span><span id="result_box" class="long_text short_text" lang="en"> <span title="Feu clic per obtenir traduccions alternatives" class="hps">moment</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">about</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">the
+aerodynamic center (</span></span><span id="result_box" class="long_text" lang="en"><span title="Feu clic per obtenir traduccions alternatives" class="hps">does
+not vary</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">with
+the</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">angle</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">of</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">incidence</span><span class="" title="Feu clic per obtenir traduccions alternatives">)</span></span><br>
+<span id="result_box" class="long_text short_text" lang="en"><span title="Feu clic per obtenir traduccions alternatives" class="hps"><br>
+For <span style="font-style: italic;">L = 0 ,
+M(A)=M(AC)=M(0)&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; (M(AC) =
+constant with alpha)<br>
+<br>
+</span>Then<br>
+<br>
+</span></span><span style="font-style: italic;">M(A) = M(0) - L/4</span><br>
+<span id="result_box" class="long_text short_text" lang="en"><span title="Feu clic per obtenir traduccions alternatives" class="hps"><span style="font-style: italic;"><br>
+<br>
+</span></span></span><span id="result_box" class="long_text" lang="en"><span title="Feu clic per obtenir traduccions alternatives" class="hps">The</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">forces</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">and</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">moments</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">can
+also be</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">expressed</span><span title="Feu clic per obtenir traduccions alternatives" class="hps"></span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">by</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">their</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">respective</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">lift,
+drag, and moment coefficients</span><span class="" title="Feu clic per obtenir traduccions alternatives"></span><span title="Feu clic per obtenir traduccions alternatives" class="hps">:<br>
+<br>
+<span style="font-style: italic;">L = Cl · (1/2) · rho
+· V^2 · S&nbsp;</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+(<span style="font-style: italic;">rho</span> air density, <span style="font-style: italic;">V</span>= air speed, <span style="font-style: italic;">S</span> = wing projected area)<br>
+</span></span><span id="result_box" class="long_text" lang="en"><span title="Feu clic per obtenir traduccions alternatives" class="hps"><span style="font-style: italic;">D = Cd · (1/2) · rho
+· V^2 · S&nbsp;</span>&nbsp; <br>
+<br>
+</span></span><span style="font-style: italic;">Cma = -CP · (Cl
+cos (alpha) + Cd sin (alpha))<br>
+<br>
+</span><span id="result_box" class="long_text" lang="en"><span title="Feu clic per obtenir traduccions alternatives" class="hps"><span style="font-style: italic;">Cma = Cm0 - Cl/4&nbsp;&nbsp;&nbsp;&nbsp;
+(Cmo = Cm at zero lift)</span><br>
+<br>
+</span></span><span id="result_box" class="long_text" lang="en"><span title="Feu clic per obtenir traduccions alternatives" class="hps">The
+value</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">and</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">sign</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">of</span>
+<span style="font-style: italic;" title="Feu clic per obtenir traduccions alternatives" class="hps">Cm0</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">has</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">an</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">important
+role</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">in the</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">behavior</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">and</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">stability</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">of
+the wing</span><span class="" title="Feu clic per obtenir traduccions alternatives">:<br>
+<br>
+If Cmo&lt;0 Cma will be more negative when alpha (Cl) increases, and CP
+moves backward<br>
+If Cmo&gt;0 </span></span><span id="result_box" class="long_text" lang="en"><span class="" title="Feu clic per obtenir traduccions alternatives">Cma will be
+positive for small alpha and CP moves forward<br>
+If Cm0=0 Cma follows Cl, and CP does not move located at </span></span><span id="result_box" class="long_text" lang="en"><span title="Feu clic per obtenir traduccions alternatives" class="hps">a
+quarter</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">of</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">the
+chord from</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">the</span>
+leading <span title="Feu clic per obtenir traduccions alternatives" class="hps">edge</span></span><br>
+<span id="result_box" class="long_text" lang="en"><span title="Feu clic per obtenir traduccions alternatives" class="hps"><br>
+Cmo &lt; 0 aerofoils will be called "unstable"<br>
+</span></span><span id="result_box" class="long_text" lang="en"><span title="Feu clic per obtenir traduccions alternatives" class="hps">Cmo
+&gt; 0 aerofoils will be called "stable"<br>
+</span></span><span id="result_box" class="long_text" lang="en"><span title="Feu clic per obtenir traduccions alternatives" class="hps">Cmo
+&lt; 0 aerofoils will be called "indiferent"<br>
+<br>
+</span></span>
+<div style="text-align: justify;"><span id="result_box" class="long_text" lang="en"><span title="Feu clic per obtenir traduccions alternatives" class="hps">You
+may</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">use</span> the <span title="Feu clic per obtenir traduccions alternatives" class="hps">three</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">types</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">of
+Cm0 aerofoils</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">in
+paragliding</span><span class="" title="Feu clic per obtenir traduccions alternatives">.</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">In
+general,</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">the</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">gliders</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">with</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">Cm0</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps atn">&lt;</span><span class="" title="Feu clic per obtenir traduccions alternatives">0</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">behave
+in a</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">more</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">lively
+and</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">the</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">easy</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">to
+turn</span><span class="" title="Feu clic per obtenir traduccions alternatives">.</span><span title="Feu clic per obtenir traduccions alternatives" class="hps">
+While</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">whith
+</span><span title="Feu clic per obtenir traduccions alternatives" class="hps">Cm</span><span class="" title="Feu clic per obtenir traduccions alternatives">&gt;</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">0</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">we
+have</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">a</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">more
+stable</span><span class="" title="Feu clic per obtenir traduccions alternatives"> wing,</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">but</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">difficult</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">to</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">turn</span><span class="" title="Feu clic per obtenir traduccions alternatives">
+(reflex airfoils).</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">Depending</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">on
+the use</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">of</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">the
+wing</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">and</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">its</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">performances</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">can
+be</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">used</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">either</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">type</span><span class="" title="Feu clic per obtenir traduccions alternatives">.</span>&nbsp;<span title="Feu clic per obtenir traduccions alternatives" class="hps"></span><span title="Feu clic per obtenir traduccions alternatives" class="hps">The</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">trend</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">is</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">to</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">use</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">profiles</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">Cm0</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">zero</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">or
+slightly</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">positive</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">on
+the wings</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">of</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">competition</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">to</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">temper</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">his
+natural aggressive behavior. </span></span><span id="result_box" class="long_text" lang="en"><span title="Feu clic per obtenir traduccions alternatives" class="hps">But
+there is no</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">fixed
+rule</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">on this</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">issue.</span></span><br>
+<span id="result_box" class="long_text" lang="en"><span title="Feu clic per obtenir traduccions alternatives" class="hps"></span></span><br>
+<span id="result_box" class="long_text" lang="en"><span title="Feu clic per obtenir traduccions alternatives" class="hps"></span></span><span id="result_box" class="long_text" lang="en"><span title="Feu clic per obtenir traduccions alternatives" class="hps">The</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">overall
+stability</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">of</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">the
+wing</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">is</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">controlled</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">by</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">the</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">position
+of</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">center</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">of</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">gravity.</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">Should
+be</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">discussed</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">in
+another</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">section</span><span class="" title="Feu clic per obtenir traduccions alternatives">.</span></span><br>
+</div>
+<div id="gt-res-tools" class="g-section" style="">
+<div class="gt-icon-c" tabindex="0" role="button" style="display: none;" id="gt-res-listen"><span class="gt-icon gt-icon-listen-off"></span><span class="gt-icon-text">Escolta</span></div>
+<div class="gt-icon-c" tabindex="0" role="button" style="display: none;" id="gt-res-roman"><span class="gt-icon gt-icon-roman-off"></span><span class="gt-icon-text">Llegeix fonèticament</span></div>
+</div>
+<span style="color: red;"></span><span style="font-style: italic;"><br style="font-style: italic;">
+</span><span style="font-style: italic;"></span><br>
+<img style="width: 745px; height: 266px;" alt="" src="./Airfoils_files/airfoil_incidence.png"><br>
+Fig 2.2. Airfoil resultant<span style="font-weight: bold;"><br>
+<br>
+<br>
+<br>
+<a name="6"></a>2.6 NACA profiles<br>
+<br>
+</span>The NACA&nbsp;aerofoils can be generated by the use of a set of
+simple polynomial equations. <br>
+<br>
+(...)<br>
+<span style="font-weight: bold;">
+</span><span style="font-weight: bold;"><br>
+<a name="7"></a>2.7 Paraglider aerofoils<br>
+<br>
+</span><span id="result_box" class="long_text" lang="en"><span title="Feu clic per obtenir traduccions alternatives" class="hps">The</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">paraglider
+airfoils</span><span title="Feu clic per obtenir traduccions alternatives" class="hps"></span><span title="Feu clic per obtenir traduccions alternatives" class="hps"></span><span class="" title="Feu clic per obtenir traduccions alternatives">,</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">despite
+being</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">pressurized</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">fabric</span><span class="" title="Feu clic per obtenir traduccions alternatives">,</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">behave</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">like</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">the</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">rest</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">of
+the</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">gliders. <br>
+<br>
+</span></span><span id="result_box" class="long_text" lang="en"><span title="Feu clic per obtenir traduccions alternatives" class="hps">But
+besides</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">the</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">geometric</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">and</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">aerodynamic</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">parameters</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">described
+above</span><span class="" title="Feu clic per obtenir traduccions alternatives">,</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">the</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">following</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">are</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">also
+interesting</span><span class="" title="Feu clic per obtenir traduccions alternatives">:</span><br>
+<br>
+</span>
+<div style="margin-left: 40px;"><span id="result_box" class="long_text" lang="en"><span title="Feu clic per obtenir traduccions alternatives" class="hps">- Position of</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">air
+inlets</span></span><br>
+<span id="result_box" class="long_text" lang="en"> <span title="Feu clic per obtenir traduccions alternatives" class="hps">-
+Position</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">of</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">anchors<br>
+- Internal rib holes<br>
+</span></span><span id="result_box" class="long_text" lang="en"><span title="Feu clic per obtenir traduccions alternatives" class="hps"></span></span></div>
+<span id="result_box" class="long_text" lang="en"><span title="Feu clic per obtenir traduccions alternatives" class="hps"><br>
+</span></span>
+<div style="text-align: justify;"><span id="result_box" class="long_text" lang="en"><span style="font-weight: bold;" title="Feu clic per obtenir traduccions alternatives" class="hps">Position
+of</span><span style="font-weight: bold;"> </span><span title="Feu clic per obtenir traduccions alternatives" class="hps"><span style="font-weight: bold;">air inlets</span>: </span></span><span id="result_box" class="long_text" lang="en"><span title="Feu clic per obtenir traduccions alternatives" class="hps">Must</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">ensure</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">the</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">air</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">entry</span><span class="" title="Feu clic per obtenir traduccions alternatives"></span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">inside
+the wing</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">to
+keep</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">the</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">pressure</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">inside</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">slightly</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">higher
+than</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">outside pressure.</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">Can
+be located</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">by</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">theoretical
+approaches,</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">or</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">even
+more</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">frequent</span>, by <span title="Feu clic per obtenir traduccions alternatives" class="hps">past
+experiences</span><span class="" title="Feu clic per obtenir traduccions alternatives">. </span></span>Air
+intakes: 1% to 6% . Values in % of chord.<br>
+<span id="result_box" class="long_text" lang="en"><span class="" title="Feu clic per obtenir traduccions alternatives"></span></span><br>
+<span id="result_box" class="long_text" lang="en"><span class="" title="Feu clic per obtenir traduccions alternatives"></span></span><span id="result_box" class="long_text" lang="en"><span style="font-weight: bold;" title="Feu clic per obtenir traduccions alternatives" class="hps">Position</span><span style="font-weight: bold;"> </span><span style="font-weight: bold;" title="Feu clic per obtenir traduccions alternatives" class="hps">of</span><span style="font-weight: bold;"> </span><span title="Feu clic per obtenir traduccions alternatives" class="hps"><span style="font-weight: bold;">anchors</span>: </span></span><span id="result_box" class="long_text" lang="en"><span title="Feu clic per obtenir traduccions alternatives" class="hps">It
+has to</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">do</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">with
+the</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">transmission</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">of
+loads</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">to</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">the</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">inflated</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">structure</span><span class="" title="Feu clic per obtenir traduccions alternatives">.</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">Usual</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">place</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">from
+5 to</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">2 anchorage points</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">along</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">the
+chord</span><span class="" title="Feu clic per obtenir traduccions alternatives">.</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">As</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">normal</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">in</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">many</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">years</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">has</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">been</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">to
+use</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">4</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">anchors</span><span class="" title="Feu clic per obtenir traduccions alternatives"> "A",
+"B", "C", "D".</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">In</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">more</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">hight
+AR competition </span><span title="Feu clic per obtenir traduccions alternatives" class="hps">wings</span>,
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">may</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">be
+used</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">only</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">2
+locations</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">on
+the chord</span><span class="" title="Feu clic per obtenir traduccions alternatives">,</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">in
+order</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">to</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">reduce</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">drag.</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">The</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">position</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">of
+these</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">anchors</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">must
+be determined experimentally</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">and</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">from</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">previous
+experiences.</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">The
+reduction</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">of
+anchors</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">may</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">require</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">the
+use</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">of</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">internal</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">reinforcements</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">to
+secure the</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">transmission</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">of</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">loads</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">over
+a wide</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">area</span><span class="" title="Feu clic per obtenir traduccions alternatives">.</span></span><br>
+</div>
+<span style="font-weight: bold;"><br>
+Internal holes:</span> The general
+rule is, to distribute the holes to allow free air circulation between
+cells, and at the same time maintaining structural strength of the rib.<span style="font-weight: bold;"><br>
+<br>
+</span>
+<table style="text-align: left; width: 100%;" border="1" cellpadding="2" cellspacing="2">
+  <tbody>
+    <tr>
+      <td>Example</td>
+      <td style="text-align: center;">Max thickness</td>
+      <td style="text-align: center;">Thickness <br>
+location</td>
+      <td style="text-align: center;">Max camber</td>
+      <td style="text-align: center;">Camber<br>
+location</td>
+      <td style="text-align: center;">Inlet begin</td>
+      <td style="text-align: center;">Inlet end</td>
+      <td style="text-align: center;">Lo A</td>
+      <td style="text-align: center;">Loc B</td>
+      <td style="text-align: center;">Loc C</td>
+      <td style="text-align: center;">Loc D</td>
+    </tr>
+    <tr>
+      <td style="vertical-align: top; font-weight: bold;"><a href="https://www.laboratoridenvol.com/paragliderdesign/Comp1992.txt">1992 Comp</a><br>
+      </td>
+      <td style="vertical-align: top; text-align: center;">17.09<br>
+      </td>
+      <td style="vertical-align: top; text-align: center;">23.3<br>
+      </td>
+      <td style="vertical-align: top; text-align: center;">3.09<br>
+      </td>
+      <td style="vertical-align: top; text-align: center;">29.8<br>
+      </td>
+      <td style="vertical-align: top; text-align: center;">2.16<br>
+      </td>
+      <td style="vertical-align: top; text-align: center;">6.6<br>
+      </td>
+      <td style="vertical-align: top; text-align: center;">9.6<br>
+      </td>
+      <td style="vertical-align: top; text-align: center;">30<br>
+      </td>
+      <td style="vertical-align: top; text-align: center;">51.1<br>
+      </td>
+      <td style="vertical-align: top; text-align: center;">72.4-85.3<br>
+      </td>
+    </tr>
+    <tr>
+      <td style="vertical-align: top; font-weight: bold;"><a href="https://www.laboratoridenvol.com/paragliderdesign/1995_Bi_DHV2.txt">1995 Bi</a><br>
+      </td>
+      <td style="vertical-align: top; text-align: center;">19.19<br>
+      </td>
+      <td style="vertical-align: top; text-align: center;">24.3<br>
+      </td>
+      <td style="vertical-align: top; text-align: center;">2.06<br>
+      </td>
+      <td style="vertical-align: top; text-align: center;">21.9<br>
+      </td>
+      <td style="vertical-align: top; text-align: center;">1.38<br>
+      </td>
+      <td style="vertical-align: top; text-align: center;">5.83<br>
+      </td>
+      <td style="vertical-align: top; text-align: center;">9.4<br>
+      </td>
+      <td style="vertical-align: top; text-align: center;">32.02<br>
+      </td>
+      <td style="vertical-align: top; text-align: center;">55.9<br>
+      </td>
+      <td style="vertical-align: top; text-align: center;">79.9<br>
+      </td>
+    </tr>
+    <tr>
+      <td style="font-weight: bold;"><a href="https://www.laboratoridenvol.com/paragliderdesign/gnuEASY.txt">gnuEASY</a><br>
+      </td>
+      <td style="text-align: center;">15.52</td>
+      <td style="text-align: center;">24.2</td>
+      <td style="text-align: center;">4.8</td>
+      <td style="text-align: center;">31.6</td>
+      <td style="text-align: center;">0.25</td>
+      <td style="text-align: center;">6</td>
+      <td style="text-align: center;">7.8</td>
+      <td style="text-align: center;">33.3</td>
+      <td style="text-align: center;">57.7</td>
+      <td style="text-align: center;">79.4</td>
+    </tr>
+    <tr>
+      <td style="font-weight: bold;"><a href="https://www.laboratoridenvol.com/paragliderdesign/gnuLAB.txt">gnuLAB1</a></td>
+      <td style="text-align: center;">14</td>
+      <td style="text-align: center;">21.4</td>
+      <td style="text-align: center;">1.83</td>
+      <td style="text-align: center;">39.6</td>
+      <td style="text-align: center;">0.12</td>
+      <td style="text-align: center;">3</td>
+      <td style="text-align: center;">8.5</td>
+      <td style="text-align: center;">31</td>
+      <td style="text-align: center;">53.5</td>
+      <td style="text-align: center;">75.8</td>
+    </tr>
+    <tr>
+      <td style="font-weight: bold;"><a href="https://www.laboratoridenvol.com/paragliderdesign/Ascender.txt">Ascender</a></td>
+      <td style="text-align: center;">18</td>
+      <td style="text-align: center;">21.9</td>
+      <td style="text-align: center;">2.03</td>
+      <td style="text-align: center;">15.7</td>
+      <td style="text-align: center;">1.2</td>
+      <td style="text-align: center;">5</td>
+      <td style="text-align: center;">8.5</td>
+      <td style="text-align: center;">27.5</td>
+      <td style="text-align: center;">53</td>
+      <td style="text-align: center;">78.5</td>
+    </tr>
+    <tr>
+      <td style="vertical-align: top;"><a style="font-weight: bold;" href="https://www.laboratoridenvol.com/paragliderdesign/gnulab2.txt">gnuLAB2</a><br>
+      </td>
+      <td style="text-align: center;">18</td>
+      <td style="text-align: center;">21.9</td>
+      <td style="text-align: center;">2.03</td>
+      <td style="text-align: center;">15.7</td>
+      <td style="text-align: center;">1.2</td>
+      <td style="text-align: center;">5.5</td>
+      <td style="text-align: center;">8.5</td>
+      <td style="text-align: center;">27.5</td>
+      <td style="text-align: center;">53</td>
+      <td style="text-align: center;">78.5</td>
+    </tr><tr>
+      <td style="vertical-align: top;">gnuLAB3<br>
+      </td>
+      <td style="vertical-align: top; text-align: center;"><br>
+      </td>
+      <td style="vertical-align: top; text-align: center;"><br>
+      </td>
+      <td style="vertical-align: top; text-align: center;"><br>
+      </td>
+      <td style="vertical-align: top; text-align: center;"><br>
+      </td>
+      <td style="vertical-align: top; text-align: center;"><br>
+      </td>
+      <td style="vertical-align: top; text-align: center;"><br>
+      </td>
+      <td style="vertical-align: top; text-align: center;"><br>
+      </td>
+      <td style="vertical-align: top; text-align: center;"><br>
+      </td>
+      <td style="vertical-align: top; text-align: center;"><br>
+      </td>
+      <td style="vertical-align: top; text-align: center;"><br>
+      </td>
+    </tr>
+    <tr>
+      <td style="vertical-align: top;">gnuA<br>
+      </td>
+      <td style="vertical-align: top; text-align: center;">20<br>
+      </td>
+      <td style="vertical-align: top; text-align: center;"><br>
+      </td>
+      <td style="vertical-align: top; text-align: center;"><br>
+      </td>
+      <td style="vertical-align: top; text-align: center;"><br>
+      </td>
+      <td style="vertical-align: top; text-align: center;"><br>
+      </td>
+      <td style="vertical-align: top; text-align: center;"><br>
+      </td>
+      <td style="vertical-align: top; text-align: center;"><br>
+      </td>
+      <td style="vertical-align: top; text-align: center;"><br>
+      </td>
+      <td style="vertical-align: top; text-align: center;"><br>
+      </td>
+      <td style="vertical-align: top; text-align: center;"><br>
+      </td>
+    </tr>
+    <tr>
+      <td style="vertical-align: top;">gnuLAB4<br>
+      </td>
+      <td style="vertical-align: top; text-align: center;"><br>
+      </td>
+      <td style="vertical-align: top; text-align: center;"><br>
+      </td>
+      <td style="vertical-align: top; text-align: center;"><br>
+      </td>
+      <td style="vertical-align: top; text-align: center;"><br>
+      </td>
+      <td style="vertical-align: top; text-align: center;"><br>
+      </td>
+      <td style="vertical-align: top; text-align: center;"><br>
+      </td>
+      <td style="vertical-align: top; text-align: center;"><br>
+      </td>
+      <td style="vertical-align: top; text-align: center;"><br>
+      </td>
+      <td style="vertical-align: top; text-align: center;"><br>
+      </td>
+      <td style="vertical-align: top; text-align: center;"><br>
+      </td>
+    </tr>
+    <tr>
+      <td style="vertical-align: top;">gnuLAB5<br>
+      </td>
+      <td style="vertical-align: top; text-align: center;"><br>
+      </td>
+      <td style="vertical-align: top; text-align: center;"><br>
+      </td>
+      <td style="vertical-align: top; text-align: center;"><br>
+      </td>
+      <td style="vertical-align: top; text-align: center;"><br>
+      </td>
+      <td style="vertical-align: top; text-align: center;"><br>
+      </td>
+      <td style="vertical-align: top; text-align: center;"><br>
+      </td>
+      <td style="vertical-align: top; text-align: center;"><br>
+      </td>
+      <td style="vertical-align: top; text-align: center;"><br>
+      </td>
+      <td style="vertical-align: top; text-align: center;"><br>
+      </td>
+      <td style="vertical-align: top; text-align: center;"><br>
+      </td>
+    </tr>
+
+  </tbody>
+</table>
+Table 2.1 Paragliders airfoils. All values expresed in % of airfoil
+chord<br>
+<br>
+<img style="width: 516px; height: 540px;" alt="" src="./Airfoils_files/perfils_lab.png"><br>
+Fig 2.3 Paragliders airfoils<br>
+<span style="font-weight: bold;"><br>
+</span><img style="width: 923px; height: 356px;" alt="1992" src="./Airfoils_files/Comp1992.png"><br>
+Fig 2.4: 1992 DHV-3 competition airfoil<br>
+<br>
+<img style="width: 934px; height: 341px;" alt="1995" src="./Airfoils_files/1995_Bi_DHV2.png"><br>
+Fig 2.5: 1995 Bi DHV-2 paraglider<br>
+<br>
+<span style="font-weight: bold;">Single skin airfoils</span><br>
+<br>
+<br>
+<br>
+<br>
+<span style="font-weight: bold;"><a name="8"></a>2.8 XFOIL program<br>
+<br>
+</span>XFOIL is an interactive program for the design and analysis of
+subsonic isolated airfoils. It consists of a collection of menu driven
+rutines which perform various useful functions such as:<br>
+<br>
+<div style="margin-left: 40px;">- Analysis of an existing airfoil<br>
+- Airfoil design and redesign by interactive modification of surface
+speed distributions<br>
+- Airfoil redesign by interactive modification of geometric parameters<br>
+- Plotting of geometry, pressure distributions, and multiple polars<br>
+<br>
+</div>
+XFOIL is released&nbsp;under GNU General Public License. The detailed
+manual and the program can be obtained from the website: <a href="http://web.mit.edu/drela/Public/web/xfoil/">http://web.mit.edu/drela/Public/web/xfoil/</a><br>
+<span style="font-weight: bold;"><br>
+<a name="9"></a>2.9 XFLR5 program</span><br>
+<div style="text-align: right;"><br>
+</div>
+<a href="http://xflr5.sourceforge.net/xflr5.htm">http://xflr5.sourceforge.net/xflr5.htm</a><br>
+<br>
+<br>
+<span style="font-weight: bold;"><a name="10"></a>2.10 AIrfoil fitting<br>
+<br>
+</span><span id="result_box" class="" lang="en"><span title="Feu clic per obtenir traduccions alternatives" class="hps">LE
+procedure</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">to</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">obtain</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">the</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">paraglider
+aerofoil of</span> <span title="Feu clic per obtenir traduccions alternatives" class="hps">any
+wing</span>. <span title="Feu clic per obtenir traduccions alternatives" class="hps">Method</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">based</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">on</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">the</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">grid</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">ripstop</span>
+<span title="Feu clic per obtenir traduccions alternatives" class="hps">fabric.<br>
+<a href="https://www.laboratoridenvol.com/info/Aerofoil-fitting/af.html">Aerofoil fitting</a><br>
+</span></span><span style="font-weight: bold;"><br>
+</span><a href="https://www.laboratoridenvol.com/paragliderdesign/index.html">index</a><br>
+<span style="font-weight: bold;"><br>
+</span>
+
+</body></html>

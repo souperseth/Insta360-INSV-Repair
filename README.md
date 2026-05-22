@@ -21,6 +21,60 @@ should have been the final metadata/trailer.
 
 ## Usage
 
+### Extract accelerometer / IMU data
+
+Programmatic API:
+
+```python
+from insv_accelerometer import read_accelerometer_timeseries
+
+imu = read_accelerometer_timeseries("video.insv")
+
+print(imu.sample_count)
+print(imu.sample_rate_hz)
+print(imu.relative_seconds[0])
+print(imu.acceleration[0])       # (accel_x, accel_y, accel_z)
+print(imu.angular_velocity[0])   # (gyro_x, gyro_y, gyro_z)
+```
+
+CSV export:
+
+```bash
+python3 insv_accelerometer.py video.insv -o accelerometer.csv --summary
+```
+
+The extractor supports both observed X3-style sequential trailers and
+X4-style trailers with a `0x000` directory table.
+
+### Analyze acro maneuver candidates
+
+Generate derived force/rotation features, conservative candidate maneuver
+intervals, and machine-learning-ready sliding-window features:
+
+```bash
+python3 insv_maneuver_analysis.py \
+  sample_insvs_x4/infinite_and_helis.insv \
+  --summary \
+  --summary-output analysis_outputs/infinite_and_helis_summary.txt \
+  --events analysis_outputs/infinite_and_helis_events.json \
+  --features analysis_outputs/infinite_and_helis_features.csv
+```
+
+For an interactive matplotlib timeline with shaded/numbered candidate
+intervals, run from a Python environment with `matplotlib` installed:
+
+```bash
+python3 -m pip install -r requirements.txt
+python3 insv_maneuver_analysis.py \
+  sample_insvs_x4/infinite_and_helis.insv \
+  --summary-output analysis_outputs/infinite_and_helis_summary.txt \
+  --plot
+```
+
+The analyzer is a first-pass labeling aid, not a final classifier.  See
+[MANEUVER_ANALYSIS.md](MANEUVER_ANALYSIS.md) for the sensor-frame caveats,
+candidate event definitions, and labeling workflow.
+
 ### Diagnose a file (no repair)
 
 ```bash
